@@ -77,7 +77,8 @@ namespace satisfy {
                 std::string str) noexcept {
 
     std::cerr << fileName << ":" << fileLine
-              << "(" << funcName << "): " << str << '\n';
+              << "(" << funcName << "): ";
+    printErr(str);
     
     return;
   }

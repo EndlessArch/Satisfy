@@ -1,5 +1,8 @@
+
 #include <iostream>
 
+#include "AST.hpp"
+#include "Codegen.hpp"
 #include "Token.hpp"
 #include "Parser.hpp"
 #include "Error.hpp"
@@ -9,9 +12,12 @@ using satisfy::parser::getNextToken;
 using satisfy::parser::_curTok;
 using satisfy::printErr;
 
+using namespace satisfy::ast;
 
+// executable block
+static satisfy::ast::CodeBlockAST _execBlock;
 
-void HandleClass(void) noexcept {
+void HandleClass(satisfy::codegen::CodeGenContext & _cgc) noexcept {
 
   if(getNextToken() != TokenType::tokenIdentifier) {
     err_idf_expected();
@@ -19,12 +25,12 @@ void HandleClass(void) noexcept {
     getNextToken();
   }
 
-  ;
+   ;
 
   return;
 }
 
-void HandleDeclareSupporter(void) noexcept {
+void HandleDeclareSupporter(satisfy::codegen::CodeGenContext & _cgc) noexcept {
 
   if(getNextToken() != TokenType::tokenIdentifier) {
     err("Expected identifier");
@@ -37,13 +43,60 @@ void HandleDeclareSupporter(void) noexcept {
   return;
 }
 
-void HandleIdentifier(void) noexcept {
+void HandleIdentifier(CodeGenContext & _cgc) noexcept {
+
+  IdentifierAST type(satisfy::parser::getIdentifierStr());
+  std::cout << "type = \"" << satisfy::parser::getIdentifierStr() << "\"\n";
 
   // -> variable
   if(getNextToken() == TokenType::tokenType) {
     // variable type
     if(getNextToken() == TokenType::tokenIdentifier) {
-      // TODO: create Variable AST
+      std::string name(satisfy::parser::getIdentifierStr());
+      std::cout << "name = \"" << name << "\"\n";
+
+      // TODO: add constructor initializer('(')
+      if(getNextToken() == TokenType::tokenOperator) {
+        if(satisfy::parser::getIdentifierStr() == "=") {
+          getNextToken();
+          if(_curTok != TokenType::tokenIdentifier
+             && _curTok != TokenType::tokenNumber) {
+            std::cout << _curTok << std::endl;
+            std::cout << satisfy::parser::getIdentifierStr() << std::endl;
+            // std::cout << satisfy::parser::_numVal << std::endl;
+            err_idf_expected();
+            return;
+          }
+          SafeExprPtr get;
+          if(_curTok == TokenType::tokenIdentifier) {
+            // IdentifierAST id(satisfy::parser::getIdentifierStr());
+            // get = std::shared_ptr<ExprAST>((ExprAST *)&id);
+            get
+              = std::shared_ptr<ExprAST>
+              ((ExprAST *)new IdentifierAST(satisfy::parser::getIdentifierStr()));
+          } else {
+            // NumberAST num(satisfy::parser::getNumVal());
+            // get = std::shared_ptr<ExprAST>((ExprAST *)&num);
+
+            get = std::shared_ptr<ExprAST>
+              ((ExprAST *)new NumberAST(satisfy::parser::getNumVal()));
+          }
+
+          SafeExprPtr safeAssign = std::shared_ptr<ExprAST>
+            ((ExprAST *)new AssignmentAST(name, get));
+          const SafeExprPtr safeBlock = std::shared_ptr<ExprAST>
+            ((ExprAST *)new VariableAST(type, name, safeAssign));
+          // safeBlock->codegen(_cgc)->print(llvm::errs());
+          _execBlock.push(safeBlock);
+          return;
+        } else
+          err((std::string)"Unexpected operator \'" + (char)_curTok + "\'");
+      }
+      
+      const SafeExprPtr safeBlock = std::shared_ptr<ExprAST>
+        ((ExprAST *)new VariableAST(type, name));
+      _execBlock.push(safeBlock);
+
       return;
     }
     else {
@@ -55,7 +108,8 @@ void HandleIdentifier(void) noexcept {
   // -> function
   if(_curTok == TokenType::tokenReturnType) {
     if(getNextToken() == TokenType::tokenIdentifier) {
-      ;
+      std::string funcName = satisfy::parser::getIdentifierStr();
+      
       return;
     }
     else {
@@ -64,14 +118,18 @@ void HandleIdentifier(void) noexcept {
     }
   }
 
+  std::cout << _curTok << std::endl;
+  std::cout << satisfy::parser::getIdentifierStr() << std::endl;
+
   err_expr_unexpected();
 
   return;
 }
 
-void parseLoop(void) noexcept {
+void parseLoop(satisfy::codegen::CodeGenContext & _cgc) noexcept {
 
-  while(getNextToken() != TokenType::tokenEOF) {
+  while(_curTok = TokenType::tokenEOF,
+        getNextToken() != TokenType::tokenEOF) {
 
     if(_curTok == TokenType::tokenReturn) {
       err("Return should be occured in a function");
@@ -94,8 +152,9 @@ void parseLoop(void) noexcept {
     }
 
     if(_curTok == TokenType::tokenIdentifier) {
-      HandleIdentifier();
-      continue;
+      HandleIdentifier(_cgc);
+      // continue;
+      goto POST_PARSE;
     }
 
     if(_curTok == TokenType::tokenNumber) {
@@ -109,12 +168,12 @@ void parseLoop(void) noexcept {
     }
     
     if(_curTok == TokenType::tokenDeclareSupporter) {
-      HandleDeclareSupporter();
+      HandleDeclareSupporter(_cgc);
       continue;
     }
 
     if(_curTok == TokenType::tokenClass) {
-      HandleClass();
+      HandleClass(_cgc);
       continue;
     }
 
@@ -144,8 +203,8 @@ void parseLoop(void) noexcept {
     }
 
   POST_PARSE:
-    // getNextToken();
-    ;
+
+    return;
   }
 
   return;
@@ -153,7 +212,15 @@ void parseLoop(void) noexcept {
 
 int main(int argc, char * argv[]) {
 
-  parseLoop();
+  satisfy::codegen::CodeGenContext ctx;
+
+  parseLoop(ctx);
+
+  ctx.generateCode(_execBlock);
+
+  std::cerr << "Dumping...\n\"";
+  ctx.getModule().print(llvm::errs(), nullptr);
+  std::cerr << "\"\nDone...\n";
 
   return 0;
 }

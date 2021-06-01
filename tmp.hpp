@@ -3,6 +3,7 @@
 
 #include <array>
 #include <utility>
+#include <variant>
 
 template <std::size_t N>
 class __carray {
@@ -36,5 +37,14 @@ static constexpr
 auto getArray(T (&arr)[N]) noexcept {
   return __get_array<T, N>(arr, std::make_index_sequence<N>());
 }
+
+////
+
+template <class... Ts>
+struct overload_t : Ts... {
+  using Ts::operator()...;
+};
+
+template <class... Ts> overload_t(Ts &...) -> overload_t<Ts &...>;
 
 #endif // SATISFY_TMP_HPP

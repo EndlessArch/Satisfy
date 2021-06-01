@@ -4,22 +4,36 @@
 #include <cstdio>
 #include <cctype>
 #include <string>
+#include <variant>
 
 #include "Token.hpp"
 #include "Error.hpp"
 
+#include <bitset>
 #include <iostream>
 
 namespace satisfy {
 namespace parser {
 
-  static std::string _identifierStr;
-  static double _numVal;
+  extern std::string _identifierStr;
+
+  using value_type = typename std::variant<int, unsigned, double>;
+  using switch_type = typename std::bitset<4>;
+
+  extern value_type _numVal;
+
+  // 0: crlf, 1: '.', 2: '-'
+  extern switch_type _switches;
+
+  // forward declaration
+  inline void setCRLF(bool) noexcept;
+
+  void onCRLF(void) noexcept;
 
   inline
   bool isWhiteSpace(int i) noexcept {
     if(i == '\n' || i == '\r') {
-      satisfy::updateLine();
+      onCRLF();
 
       return true;
     }
@@ -34,7 +48,7 @@ namespace parser {
 
   inline
   bool isDigit(int i) noexcept {
-    return std::isdigit(i) || i == '.';
+    return std::isdigit(i);
   }
 
   inline
@@ -55,7 +69,6 @@ namespace parser {
   inline
   satisfy::token::TokenType
   returnToken(satisfy::token::TokenType tokType) noexcept {
-    // std::cout << (int)tokType << '\n';
 
     updateRow();
 
@@ -70,14 +83,28 @@ namespace parser {
   }
 
   inline
-  double getNumVal(void) noexcept {
+  auto getNumVal(void) noexcept {
     return _numVal;
   }
 
   satisfy::token::TokenType
   getNextToken(void) noexcept;
 
+  void setCRLF(bool b) noexcept {
+    _switches.set(0, b);
+  }
+
+  inline
+  bool wasCRLF(void) noexcept {
+    return _switches[0];
+  }
+
 } // ns parser  
 } // ns satisfy
+
+// #define getPureValue(void)       \
+//   (std::visit(([](auto && x) -> auto && {       \
+//     return x;      \
+//   }), satisfy::parser::getNumVal())
 
 #endif // SATISFY_PARSER_HPP
