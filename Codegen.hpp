@@ -43,7 +43,7 @@ namespace codegen {
     CodeGenContext();
     ~CodeGenContext();
 
-    void generateCode(ast::CodeBlockAST &) noexcept;
+    void generateCode(ast::CodeAST &) noexcept;
 
     inline
     bool isOnBaseCode(void) noexcept {

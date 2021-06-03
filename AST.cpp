@@ -159,6 +159,7 @@ namespace ast {
       return nullptr;
     }
 
+    // std::cout << "Creating alloca: " << varType_.idName_ << ": " << varName_ << std::endl;
     llvm::AllocaInst * alloca = _cgc.getBuilder().CreateAlloca(varTy, 0, varName_.c_str());
 
     // TODO:
@@ -245,7 +246,7 @@ namespace ast {
                                    parentPtr);
     } else currentBlock = bb_;
 
-    _cgc.pushBlock(currentBlock);
+    // _cgc.pushBlock(currentBlock);
 
     auto & localVars = _cgc.getLocal();
     std::string name;
@@ -268,7 +269,7 @@ namespace ast {
       lastVal = it->get()->codegen(_cgc);
     ///
 
-    _cgc.popBlock();
+    // _cgc.popBlock();
 
     return lastVal;
   }
@@ -424,8 +425,6 @@ namespace ast {
                                funcName_,
                                _cgc.getModule());
 
-    std::cout << cb_.getExprSize() << std::endl;
-
     // just define function
     if(!cb_.getExprSize())
       return func;
@@ -436,6 +435,13 @@ namespace ast {
                                  "entry",
                                  func);
 
+    _cgc.pushBlock(entry);
+
+    // make parameters visible
+    for (int i = 0; i < params_.size(); ++i)
+      _cgc.getLocal()[params_[i].varName_]
+        = (func->arg_begin() + i);
+    
     cb_.setBlock(entry);
 
     if(llvm::Value * retVal = cb_.codegen(_cgc)) {
@@ -444,10 +450,13 @@ namespace ast {
       if(!llvm::verifyFunction(*func, &llvm::errs())) {
         // TODO: Analysis...
         // _cgc.getFPM().run(*func);
+        _cgc.popBlock();
         return func;
       }
       std::cout << std::endl;
     }
+
+    _cgc.popBlock();
 
     // erase, invalid function
     func->eraseFromParent();
@@ -463,6 +472,7 @@ namespace ast {
         : cgc_(cgc) {}
 
       llvm::Value * operator()(VariableAST & var) noexcept {
+        std::cout << cgc_.getLocal().size() << std::endl;
         return cgc_.getLocal()[var.varName_];
       }
       llvm::Value * operator()(NumberAST & num) noexcept {
@@ -470,6 +480,31 @@ namespace ast {
       }
     };
     return _cgc.getBuilder().CreateRet(std::visit(ret_s(_cgc), this->ret_));
+  }
+
+  CodeAST::CodeAST(void)
+    : exprs_({}) {}
+
+  CodeAST::CodeAST(SafeExprPtr _sep)
+    : exprs_({}) {
+    exprs_.push_back(_sep);
+  }
+
+  CodeAST::CodeAST(std::initializer_list<SafeExprPtr> il)
+    : exprs_(il) {}
+
+  llvm::Value *
+  CodeAST::codegen(CodeGenContext & _cgc) noexcept {
+    std::cout << "Found " << exprs_.size() << " pieces of codes\n";
+
+    for(auto & i : exprs_)
+      i->codegen(_cgc);
+
+    return nullptr;
+  }
+
+  void CodeAST::push(SafeExprPtr _sep) noexcept {
+    exprs_.push_back(_sep);
   }
 } // ns ast
 } // ns satisfy

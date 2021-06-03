@@ -197,6 +197,11 @@ namespace ast {
     inline void setCodeBody(const CodeBlockAST & cb) noexcept {
       cb_ = cb;
     }
+
+    inline IdentifierAST
+    getFuncRetType(void) noexcept {
+      return retType_;
+    }
   };
 
   class ReturnAST : public ExprAST {
@@ -205,8 +210,19 @@ namespace ast {
   public:
     template <typename AST>
     ReturnAST(AST && ast)
-      : ret_(std::forward<AST>(ast)) {}
+      : ret_(std::forward<AST>(ast)) {
+    }
     llvm::Value * codegen(CodeGenContext &) noexcept override;
+  };
+
+  class CodeAST : public ExprAST {
+    std::list<SafeExprPtr> exprs_;
+  public:
+    CodeAST(void);
+    CodeAST(SafeExprPtr);
+    CodeAST(std::initializer_list<SafeExprPtr>);
+    llvm::Value * codegen(CodeGenContext &) noexcept override;
+    void push(SafeExprPtr) noexcept;
   };
 
 } // ns ast

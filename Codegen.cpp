@@ -44,40 +44,14 @@ namespace codegen {
     std::cerr << "\"Done.\n";
   }
 
-  void CodeGenContext::generateCode(ast::CodeBlockAST & codeBlock) noexcept {
+  void CodeGenContext::generateCode(ast::CodeAST & codeBlock) noexcept {
 
     std::cout << "Generating code...\n";
-
-    // std::vector<llvm::Type *> argTys;
-    // llvm::FunctionType * ft
-    //   = llvm::FunctionType::get(getBasicInt(llvmCtx_),
-    //                             argTys,
-    //                             false);
-
-    // mainFunction_ = llvm::Function::Create(ft,
-    //                                        llvm::GlobalValue::ExternalLinkage,
-    //                                        "main",
-    //                                        llvmModule_);
-
-    // llvm::BasicBlock * bb = llvm::BasicBlock::Create(llvmCtx_,
-    //                                                  "entry",
-    //                                                  mainFunction_); // parent
-
-    // llvmBuilder_.SetInsertPoint(bb);
-
-    // pushBlock(bb);
-
-
 
     // codeBlock.codegen(*this);
     // mainFunction->codegen(*this);
     // dynamic_cast<ast::FunctionAST *>(codeBlock.get())->codegen(*this);
     codeBlock.codegen(*this);
-
-    // popBlock();
-
-    // llvmBuilder_.CreateRet(llvm::ConstantInt::get(getBasicInt(llvmCtx_),
-    //                                               llvm::APInt(sizeof(int) * 8, 0, true)));
 
     std::cout << "Generated code.\n";
 

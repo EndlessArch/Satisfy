@@ -15,7 +15,7 @@ using satisfy::printErr;
 using namespace satisfy::ast;
 using namespace satisfy::codegen;
 
-void HandleIdentifier(CodeBlockAST &) noexcept;
+void HandleIdentifier(CodeAST &) noexcept;
 
 bool isIdentifier(void) noexcept {
   if(_curTok != TokenType::tokenIdentifier) {
@@ -32,7 +32,7 @@ bool parseIdentifier(void) noexcept {
   return isIdentifier();
 }
 
-void HandleClass(CodeBlockAST & _me) noexcept {
+void HandleClass(CodeAST & _me) noexcept {
 
   if(getNextToken() != TokenType::tokenIdentifier) {
     err_idf_expected();
@@ -45,7 +45,7 @@ void HandleClass(CodeBlockAST & _me) noexcept {
   return;
 }
 
-void HandleDeclareSupporter(CodeBlockAST & _me) noexcept {
+void HandleDeclareSupporter(CodeAST & _code) noexcept {
 
   if(getNextToken() != TokenType::tokenIdentifier) {
     err("Expected identifier");
@@ -58,7 +58,7 @@ void HandleDeclareSupporter(CodeBlockAST & _me) noexcept {
   return;
 }
 
-std::vector<VariableAST> parseList(CodeBlockAST & _me) noexcept {
+std::vector<VariableAST> parseList(CodeAST & _code) noexcept {
   ;
   std::vector<VariableAST> list;
 
@@ -94,7 +94,8 @@ std::vector<VariableAST> parseList(CodeBlockAST & _me) noexcept {
 }
 
 // parse expression inside function
-void parseBlock(CodeBlockAST & _me) noexcept {
+void parseBlock(FunctionAST & _funcDef,
+                CodeBlockAST & _code) noexcept {
   
   // eat {
   getNextToken();
@@ -107,8 +108,7 @@ void parseBlock(CodeBlockAST & _me) noexcept {
       case TokenType::tokenIdentifier:
         {
           std::string str = satisfy::parser::getIdentifierStr();
-
-          _me.push(SafeExprPtr(new ReturnAST(VariableAST(str))));
+          _code.push(SafeExprPtr(new ReturnAST(VariableAST(str))));
         }
         break;
       case TokenType::tokenNumber:
@@ -120,9 +120,9 @@ void parseBlock(CodeBlockAST & _me) noexcept {
           //   getNextToken();
           //   return;
           // }
-          NumberAST num(_me.getParent()->getReturnType(),
+          NumberAST num(_funcDef.getFuncRetType(),
                         satisfy::parser::getNumVal());
-          _me.push(SafeExprPtr(new ReturnAST(num)));
+          _code.push(SafeExprPtr(new ReturnAST(num)));
         }
         break;
       default:
@@ -130,14 +130,15 @@ void parseBlock(CodeBlockAST & _me) noexcept {
                  + satisfy::parser::currentTokenAsString()
                  + "\'(" + std::to_string(_curTok) + ")");
         getNextToken();
-        return;
       }
       continue;
     }
 
     // identifiers
     if(_curTok == TokenType::tokenIdentifier) {
-      HandleIdentifier(_me);
+      std::cout << satisfy::parser::getIdentifierStr() << std::endl;
+      return;
+      // HandleIdentifier(_code);
     }
     else {
       std::cout << _curTok << "IDK\n";
@@ -151,7 +152,7 @@ void parseBlock(CodeBlockAST & _me) noexcept {
   return;
 }
 
-void HandleIdentifier(CodeBlockAST & _me) noexcept {
+void HandleIdentifier(CodeAST & _code) noexcept {
 
   IdentifierAST type(satisfy::parser::getIdentifierStr());
 
@@ -186,7 +187,7 @@ void HandleIdentifier(CodeBlockAST & _me) noexcept {
       const SafeExprPtr safeBlock =
         SafeExprPtr((ExprAST *)new VariableAST(type, name, safeAssign));
 
-      _me.push(safeBlock);
+      _code.push(safeBlock);
       return;
     }
       
@@ -198,7 +199,7 @@ void HandleIdentifier(CodeBlockAST & _me) noexcept {
     const SafeExprPtr safeBlock =
       SafeExprPtr((ExprAST *)new VariableAST(type, name, assignNull));
 
-    _me.push(safeBlock);
+    _code.push(safeBlock);
 
     return;
   }
@@ -210,27 +211,23 @@ void HandleIdentifier(CodeBlockAST & _me) noexcept {
     std::string funcName = satisfy::parser::getIdentifierStr();
 
     std::vector<VariableAST> argList;
-    CodeBlockAST functionEntryBlock;
+    CodeBlockAST funcEntryBlock;
       
     // get function parameters
     if(getNextToken() == TokenType::tokenSeperator)
-      argList = parseList(_me);
+      argList = parseList(_code);
 
     FunctionAST preFuncDef(funcName, type, argList);
     SafeExprPtr fSafe(new FunctionAST(preFuncDef));
-    _me.push(fSafe);
+    _code.push(fSafe);
 
     if(!(_curTok == TokenType::tokenBlock
          && satisfy::parser::getIdentifierStr() == "{"))
       return;
 
-    std::cout << "1: " << _me.getExprSize() << std::endl;
+    parseBlock(preFuncDef, funcEntryBlock);
 
-    parseBlock(_me);
-
-    std::cout << "2: " << _me.getExprSize() << std::endl;
-
-    reinterpret_cast<FunctionAST *>(fSafe.get())->setCodeBody(functionEntryBlock);
+    reinterpret_cast<FunctionAST *>(fSafe.get())->setCodeBody(funcEntryBlock);
 
     return;
   }
@@ -242,12 +239,12 @@ void HandleIdentifier(CodeBlockAST & _me) noexcept {
   return;
 }
 
-void parseLoop(CodeBlockAST & mainEntry) noexcept {
+void parseLoop(CodeAST & code) noexcept {
 
   while(_curTok = TokenType::tokenEOF,
         getNextToken() != TokenType::tokenEOF) {
     ;
-    HandleIdentifier(mainEntry);
+    HandleIdentifier(code);
     goto POST_PARSE;
 
     // -2
@@ -276,7 +273,7 @@ void parseLoop(CodeBlockAST & mainEntry) noexcept {
 
     // -6
     if(_curTok == TokenType::tokenIdentifier) {
-      HandleIdentifier(mainEntry);
+      HandleIdentifier(code);
       // continue;
       goto POST_PARSE;
     }
@@ -295,13 +292,13 @@ void parseLoop(CodeBlockAST & mainEntry) noexcept {
     
     // -9
     if(_curTok == TokenType::tokenDeclareSupporter) {
-      HandleDeclareSupporter(mainEntry);
+      HandleDeclareSupporter(code);
       continue;
     }
 
     // -10
     if(_curTok == TokenType::tokenClass) {
-      HandleClass(mainEntry);
+      HandleClass(code);
       continue;
     }
 
@@ -342,29 +339,12 @@ void parseLoop(CodeBlockAST & mainEntry) noexcept {
 int main(int argc, char * argv[]) {
 
   satisfy::codegen::CodeGenContext ctx;
-
-  // llvm::FunctionType * ft
-  //   = llvm::FunctionType::get(satisfy::codegen::getBasicInt(ctx.getLLVMCtx()),
-  //                             false);
-
-  // llvm::Function * mainFunction_
-  //   = llvm::Function::Create(ft,
-  //                            llvm::GlobalValue::ExternalLinkage,
-  //                            "main",
-  //                            ctx.getModule());
   
-  // llvm::BasicBlock * bb = llvm::BasicBlock::Create(ctx.getLLVMCtx(),
-  //                                                  "entry",
-  //                                                  mainFunction_
-  //                                                  );
-  
-  CodeBlockAST mainEntry;
+  CodeAST codes;
 
-  // ctx.pushBlock(bb);
+  parseLoop(codes);
 
-  parseLoop(mainEntry);
-
-  ctx.generateCode(mainEntry);
+  ctx.generateCode(codes);
 
   return 0;
 }
