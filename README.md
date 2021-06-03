@@ -5,7 +5,7 @@ Satisfy me
 .sfy
 
 ## 문법
-### 일반 변수
+### 일반 변수 ✅
 ```
 VarType:VarName
 ```
