@@ -2,6 +2,8 @@
 
 #include <string>
 
+using satisfy::token::TokenType;
+
 namespace satisfy {
 namespace parser {
 
@@ -39,20 +41,28 @@ namespace parser {
 
     if(lch == '/') {
       lch = getNextChar();
-      return returnToken(token::TokenType::tokenSeperator);
+      return returnToken(TokenType::tokenSeperator);
     }
 
     if(lch == '!') {
       lch = getNextChar();
-      return returnToken(token::TokenType::tokenDeclareSupporter);
+      return returnToken(TokenType::tokenDeclareSupporter);
+    }
+
+    if(lch == '{'
+       || lch == '}') {
+      _identifierStr = (char)lch;
+      lch = getNextChar();
+      return returnToken(TokenType::tokenBlock);
     }
 
     if(lch == '<') {
       if((lch = getNextChar()) == '-') {
+        _identifierStr = "<-";
         lch = getNextChar();
-        return returnToken(token::TokenType::tokenClassEnd);
+        return returnToken(TokenType::tokenClassDecl);
       }
-      return returnToken(token::TokenType::tokenOperator);
+      return returnToken(TokenType::tokenOperator);
     }
 
     bool flag_dash = lch == '-';
@@ -61,18 +71,20 @@ namespace parser {
     if(flag_dash) {
       _identifierStr = (char)lch;
       if((lch = getNextChar()) == '>') {
+        _identifierStr = "->";
         lch = getNextChar();
-        return returnToken(token::TokenType::tokenClassStart);
+        return returnToken(TokenType::tokenClassDecl);
       }
 
       isCurTokDigit = isDigit(lch);
       if(!isCurTokDigit)
-        return returnToken(token::TokenType::tokenOperator);
+        return returnToken(TokenType::tokenOperator);
     } else {
       _identifierStr.clear();
       isCurTokDigit = isDigit(lch);
     }
 
+    // Number
     if(isCurTokDigit) {
       do {
         _identifierStr += (char)lch;
@@ -92,7 +104,7 @@ namespace parser {
           _numVal = atoi(_identifierStr.c_str());
       } else
         _numVal = strtod(_identifierStr.c_str(), nullptr);
-      return token::TokenType::tokenNumber;      
+      return returnToken(TokenType::tokenNumber);
     }
 
     if(flag_dash ||
@@ -101,20 +113,20 @@ namespace parser {
        lch == '%' || lch == '=') {
       _identifierStr = (char)lch;
       lch = getNextChar(); // skip
-      return returnToken(token::TokenType::tokenOperator);
+      return returnToken(TokenType::tokenOperator);
     }
       
     if(lch == '.') {
       lch = getNextChar();
-      return returnToken(token::TokenType::tokenAccess);
+      return returnToken(TokenType::tokenAccess);
     }
 
     if(lch == ':') {
       if((lch = getNextChar()) == ':') {
         lch = getNextChar(); // skip :
-        return returnToken(token::TokenType::tokenReturnType);
+        return returnToken(TokenType::tokenReturnType);
       }
-      return returnToken(token::TokenType::tokenType);
+      return returnToken(TokenType::tokenType);
     }
 
     if(isAlpha(lch)) {
@@ -122,26 +134,26 @@ namespace parser {
           !isWhiteSpace(lch) && (isAlpha(lch) || isDigit(lch));
           _identifierStr += (char)lch, lch = getNextChar());
 
-      token::TokenType retTok = token::tokenEOF;
+      TokenType retTok = TokenType::tokenEOF;
 
       if(_identifierStr == "cls")
-        retTok = token::TokenType::tokenClass;
+        retTok = TokenType::tokenClass;
 
       if(_identifierStr == "constructor")
-        retTok = token::TokenType::tokenConstructor;
+        retTok = TokenType::tokenConstructor;
 
       if(_identifierStr == "destructor")
-        retTok = token::TokenType::tokenDestructor;
+        retTok = TokenType::tokenDestructor;
 
       if(_identifierStr == "ret")
-        retTok = token::TokenType::tokenReturn;
+        retTok = TokenType::tokenReturn;
 
       // if(_identifierStr == "ext" ||
       //    _identifierStr == "static")
       //   retTok = token::TokenType::tokenIdentifier;
 
-      if(retTok == token::tokenEOF)
-        return returnToken(token::tokenIdentifier);
+      if(retTok == TokenType::tokenEOF)
+        return returnToken(TokenType::tokenIdentifier);
 
       lch = getNextChar();
 
@@ -150,18 +162,55 @@ namespace parser {
 
     if(lch == EOF) {
       lch = getNextChar();
-      return returnToken(token::TokenType::tokenEOF);
+      return returnToken(TokenType::tokenEOF);
     }
 
     int t = lch;
     lch = getNextChar();
-    return returnToken((token::TokenType)t);
+    return returnToken((TokenType)t);
   }
 
   satisfy::token::TokenType
   getNextToken(void) noexcept {
     setCRLF(false);
     return _curTok = get_token();
+  }
+
+  std::string currentTokenAsString(void) noexcept {
+    switch(static_cast<TokenType>(_curTok)) {
+    case TokenType::tokenReturn:
+      return "ret";
+    case TokenType::tokenType:
+      return ":";
+    case TokenType::tokenReturnType:
+      return "::";
+    case TokenType::tokenSeperator:
+      return "/";
+    case TokenType::tokenDeclareSupporter:
+      return "!";
+    case TokenType::tokenAccess:
+      return ".";
+
+    case TokenType::tokenChar:
+      // return "\'" + _identifierStr + "\'";
+    case TokenType::tokenString:
+      // return "\"" + _identifierStr + "\"";
+
+    case TokenType::tokenOperator:
+    case TokenType::tokenIdentifier:
+    case TokenType::tokenNumber:
+    case TokenType::tokenClass:
+    case TokenType::tokenClassDecl:
+    case TokenType::tokenConstructor:
+    case TokenType::tokenDestructor:
+    case TokenType::tokenBlock:
+      return _identifierStr;
+      
+    default:
+      ;
+    }
+
+    return "";
   }
 
 } // ns parser

@@ -19,14 +19,14 @@ namespace satisfy {
 
     switch(parser::_curTok) {
     case token::TokenType::tokenAccess:
+    case token::TokenType::tokenBlock:
     case token::TokenType::tokenDeclareSupporter:
     case token::TokenType::tokenSeperator:
     case token::TokenType::tokenType:
     case token::TokenType::tokenOperator:
       i = 1;
       break;
-    case token::TokenType::tokenClassStart:
-    case token::TokenType::tokenClassEnd:
+    case token::TokenType::tokenClassDecl:
     case token::TokenType::tokenReturnType:
       i = 2;
       break;

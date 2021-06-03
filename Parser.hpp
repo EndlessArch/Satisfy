@@ -99,6 +99,8 @@ namespace parser {
     return _switches[0];
   }
 
+  std::string currentTokenAsString(void) noexcept;
+
 } // ns parser  
 } // ns satisfy
 

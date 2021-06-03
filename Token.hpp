@@ -30,15 +30,19 @@ namespace token {
     // cls
     tokenClass = -10,
     // ->
-    tokenClassStart = -11,
-    // <-
-    tokenClassEnd = -12,
+    tokenClassDecl = -11,
 
-    tokenConstructor = -13,
-    tokenDestructor = -14,
+    tokenConstructor = -12,
+    tokenDestructor = -13,
 
     // .
-    tokenAccess = -15,
+    tokenAccess = -14,
+
+    // { }
+    tokenBlock = -15,
+
+    tokenChar = -16,
+    tokenString = -17
   };
   
 } // ns token

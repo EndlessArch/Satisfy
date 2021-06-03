@@ -7,9 +7,12 @@
 #include "tmp.hpp"
 
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Verifier.h>
 
 namespace satisfy {
 namespace ast {
+
+  IdentifierAST::IdentifierAST(void) {}
 
   IdentifierAST::IdentifierAST(const std::string & _id)
     : idName_(_id) {
@@ -42,7 +45,7 @@ namespace ast {
     if(id.idName_ == "char"
        || id.idName_ == "i8"
        || id.idName_ == "u8")
-      return returnTypeOf(llvm::Type::getInt1Ty(ctx));
+      return returnTypeOf(llvm::Type::getInt8Ty(ctx));
 
     if(id.idName_ == "i16"
        || id.idName_ == "u16")
@@ -73,13 +76,28 @@ namespace ast {
       || ty == llvm::Type::getDoubleTy(ctx);
   }
 
-  NumberAST::NumberAST(parser::value_type val)
-    : val_(val) {
+  NumberAST::NumberAST(llvm::Type * type, parser::value_type val)
+    : targetType_(IdentifierAST("")), val_(val) {
+    ;
+  }
+
+  NumberAST::NumberAST(IdentifierAST type, parser::value_type val)
+    : targetType_(type), val_(val) {
     ;
   }
 
   llvm::Value *
   NumberAST::codegen(CodeGenContext & _cgc) noexcept {
+
+    // llvm::DataLayout::getTypeAllocSize();
+    auto & dl = _cgc.getModule().getDataLayout();
+
+    int bits;
+    if(typePtr_)
+      bits = dl.getTypeAllocSize(typePtr_);
+    else
+      bits = dl.getTypeSizeInBits(getTypeOf(_cgc.getLLVMCtx(),
+                                              targetType_));
 
     int sc;
 
@@ -102,10 +120,10 @@ namespace ast {
     switch(sc) {
     case 0:
       return llvm::ConstantInt::get(_cgc.getLLVMCtx(),
-                                    llvm::APInt(sizeof(int) * 8, std::get<int>(parser::getNumVal()), true));      
+                                    llvm::APInt(bits, std::get<int>(parser::getNumVal()), true));      
     case 1:
       return llvm::ConstantInt::get(_cgc.getLLVMCtx(),
-                                    llvm::APInt(sizeof(int) * 8, std::get<unsigned>(parser::getNumVal()), false));
+                                    llvm::APInt(bits, std::get<unsigned>(parser::getNumVal()), false));
     case 2:
       return llvm::ConstantFP::get(_cgc.getLLVMCtx(),
                                    llvm::APFloat(std::get<double>(parser::getNumVal())));
@@ -113,6 +131,11 @@ namespace ast {
       break;
     }
     return nullptr;
+  }
+
+  VariableAST::VariableAST(std::string varName)
+    : varType_(""), varName_(varName) {
+    ;
   }
 
   VariableAST::VariableAST(const IdentifierAST & id,
@@ -136,20 +159,15 @@ namespace ast {
       return nullptr;
     }
 
-    // auto & dl =
-    //   _cgc.currentBlock()->getModule()->getDataLayout();
-
-    // // FIXME: HERE
-    // dl.getPrefTypeAlign(varTy);
-
     llvm::AllocaInst * alloca = _cgc.getBuilder().CreateAlloca(varTy, 0, varName_.c_str());
 
+    // TODO:
     _cgc.getLocal()[varName_.c_str()] = alloca;
 
     if(varAssign_) {
       // AssignmentAST assign(varName_, varAssign_);
       // assign.codegen(_cgc);
-      varAssign_->codegen(_cgc);
+      return varAssign_->codegen(_cgc);
     }
 
     return _cgc.getBuilder().CreateLoad(varTy,
@@ -172,8 +190,6 @@ namespace ast {
 
     return _cgc.getBuilder().CreateStore(rhs_->codegen(_cgc),
                                          local[lhs_]);
-    // return _cgc.getBuilder().CreateStore(local[lhs_],
-    //                                      rhs_->codegen(_cgc));
   }
 
   ReassignmentAST::ReassignmentAST(const VariableAST & lhs,
@@ -188,17 +204,26 @@ namespace ast {
                                          lhs_.codegen(_cgc));
   }
 
-  CodeBlockAST::CodeBlockAST(void)
-    : exprs_({}) {
-    ;
+  CodeBlockAST::CodeBlockAST(llvm::BasicBlock * bb,
+                             llvm::Function * fp)
+    : bb_(bb), exprs_({}), blockName_(""), parent_(fp) {
   }
 
-  CodeBlockAST::CodeBlockAST(SafeExprPtr _sep) {
+  CodeBlockAST::CodeBlockAST(std::string _blk,
+                             llvm::Function * fp)
+    : exprs_({}), blockName_(_blk), parent_(fp) {
+  }
+
+  CodeBlockAST::CodeBlockAST(SafeExprPtr _sep, std::string _blk,
+                             llvm::Function * fp)
+    : blockName_(_blk), parent_(fp) {
     exprs_.push_back(_sep);
   }
 
-  CodeBlockAST::CodeBlockAST(std::initializer_list<SafeExprPtr> _il)
-    : exprs_(_il) {
+  CodeBlockAST::CodeBlockAST(std::initializer_list<SafeExprPtr> _il,
+                             std::string _blk,
+                             llvm::Function * fp)
+    : exprs_(_il), blockName_(_blk), parent_(fp) {
     ;
   }
 
@@ -208,18 +233,60 @@ namespace ast {
 
     std::cout << "Found " << exprs_.size() << " ast expressions\n";
 
+    llvm::BasicBlock * currentBlock;
+    if(!bb_) {
+      llvm::Function * parentPtr = nullptr;
+      // remind root code type is CodeBlockAST
+      if(!_cgc.isOnBaseCode())
+         parentPtr = _cgc.currentBlock()->getParent();
+      currentBlock
+        = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
+                                   blockName_,
+                                   parentPtr);
+    } else currentBlock = bb_;
+
+    _cgc.pushBlock(currentBlock);
+
+    auto & localVars = _cgc.getLocal();
+    std::string name;
+
+    if(parent_ && !parent_->arg_empty()) {
+      for(auto & i : parent_->args()) {
+        name = i.getName();
+        if(localVars.find(name) == localVars.end())
+          localVars[name] = (llvm::Value *)i.getType();
+        else {
+          printErr((std::string)"There is already declared variable \'"
+                   + name + "\'");
+          return nullptr;
+        }
+      }
+    }
+
+    ///
     for (auto it = exprs_.begin(); it != exprs_.end(); ++it)
       lastVal = it->get()->codegen(_cgc);
+    ///
+
+    _cgc.popBlock();
 
     return lastVal;
   }
 
   void CodeBlockAST::push(SafeExprPtr _sep) noexcept {
-    if(!exprs_.back()) {
-      exprs_.assign(1, _sep);
+    if(!exprs_.size()) {
+      exprs_ = { _sep };
       return;
     }
     exprs_.push_back(_sep);
+  }
+
+  void CodeBlockAST::setBlockName(const std::string & blockName) noexcept {
+    blockName_ = blockName;
+  }
+
+  void CodeBlockAST::setBlock(llvm::BasicBlock * block) noexcept {
+    bb_ = block;
   }
 
   UnaryOperatorAST::UnaryOperatorAST(UnaryOperator op,
@@ -329,5 +396,80 @@ namespace ast {
                                         rhs_->codegen(_cgc));
   }
 
+  FunctionAST::FunctionAST(const std::string & funcName,
+                           const IdentifierAST & retType,
+                           const std::vector<VariableAST> & parTypes,
+                           const CodeBlockAST & cb)
+    : funcName_(funcName), retType_(retType),
+      params_(parTypes), cb_(cb) {
+    ;
+  }
+
+  llvm::Value *
+  FunctionAST::codegen(CodeGenContext & _cgc) noexcept {
+    std::vector<llvm::Type *> types(params_.size());
+    
+    for(int i = 0; i< params_.size(); ++i)
+      types[i] = getTypeOf(_cgc.getLLVMCtx(),
+                           params_[i].varType_);
+
+    llvm::FunctionType * funcTy
+      = llvm::FunctionType::get(getTypeOf(_cgc.getLLVMCtx(),
+                                          retType_.idName_),
+                                types,
+                                false);
+    llvm::Function * func
+      = llvm::Function::Create(funcTy,
+                               llvm::GlobalValue::ExternalLinkage,
+                               funcName_,
+                               _cgc.getModule());
+
+    std::cout << cb_.getExprSize() << std::endl;
+
+    // just define function
+    if(!cb_.getExprSize())
+      return func;
+    
+    // or declare function
+    llvm::BasicBlock * entry
+      = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
+                                 "entry",
+                                 func);
+
+    cb_.setBlock(entry);
+
+    if(llvm::Value * retVal = cb_.codegen(_cgc)) {
+      // _cgc.getBuilder().CreateRet(retVal); // FIXME:
+
+      if(!llvm::verifyFunction(*func, &llvm::errs())) {
+        // TODO: Analysis...
+        // _cgc.getFPM().run(*func);
+        return func;
+      }
+      std::cout << std::endl;
+    }
+
+    // erase, invalid function
+    func->eraseFromParent();
+
+    return nullptr;
+  }
+
+  llvm::Value *
+  ReturnAST::codegen(CodeGenContext & _cgc) noexcept {
+    struct ret_s {
+      CodeGenContext & cgc_;
+      ret_s(CodeGenContext & cgc)
+        : cgc_(cgc) {}
+
+      llvm::Value * operator()(VariableAST & var) noexcept {
+        return cgc_.getLocal()[var.varName_];
+      }
+      llvm::Value * operator()(NumberAST & num) noexcept {
+        return num.codegen(cgc_);
+      }
+    };
+    return _cgc.getBuilder().CreateRet(std::visit(ret_s(_cgc), this->ret_));
+  }
 } // ns ast
 } // ns satisfy

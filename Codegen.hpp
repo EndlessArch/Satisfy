@@ -1,9 +1,10 @@
 #ifndef SATISFY_CODEGEN_HPP
 #define SATISFY_CODEGEN_HPP
 
+#include <deque>
 #include <map>
 #include <memory>
-#include <stack>
+#include <optional>
 #include <string>
 
 #include <llvm/IR/BasicBlock.h>
@@ -30,7 +31,7 @@ namespace codegen {
   };
 
   class CodeGenContext {
-    std::stack<std::unique_ptr<struct CodeGenBlock>> blocks_;
+    std::deque<std::unique_ptr<struct CodeGenBlock>> blocks_;
     llvm::Function * mainFunction_;
     llvm::LLVMContext llvmCtx_;
     llvm::Module llvmModule_;
@@ -40,10 +41,18 @@ namespace codegen {
   public:
 
     CodeGenContext();
+    ~CodeGenContext();
 
-    void generateCode(satisfy::ast::CodeBlockAST &) noexcept;
+    void generateCode(ast::CodeBlockAST &) noexcept;
+
+    inline
+    bool isOnBaseCode(void) noexcept {
+      return blocks_.empty();
+    }
 
     std::map<std::string, llvm::Value *> & getLocal(void) noexcept;
+    std::optional<llvm::Value *>
+    searchForVariable(const std::string &) noexcept;
 
     llvm::BasicBlock * currentBlock() noexcept;
 
