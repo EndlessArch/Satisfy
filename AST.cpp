@@ -472,8 +472,10 @@ namespace ast {
         : cgc_(cgc) {}
 
       llvm::Value * operator()(VariableAST & var) noexcept {
-        std::cout << cgc_.getLocal().size() << std::endl;
-        return cgc_.getLocal()[var.varName_];
+        auto * ptr = cgc_.getLocal()[var.varName_];
+        if(!ptr)
+          printErr("Unknown variable \'" + var.varName_ + "\'");
+        return ptr;
       }
       llvm::Value * operator()(NumberAST & num) noexcept {
         return num.codegen(cgc_);
