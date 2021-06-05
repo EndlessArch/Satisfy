@@ -17,7 +17,7 @@ else()
   message(${LLVM_ROOT_DIR})
 endif()
 
-if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+if(CMAKE_BUILD_TYPE MATCHES Debug)
   add_compile_options(-g)
   message("Added debug options")
 endif()

@@ -20,6 +20,24 @@ VarType:VarName = InitialValue
 returnType::funcName par0Type: par0 par1Type: par1 ... {
 
     funcName/someVal0 someval1 ...
+    
+    if true {
+        ...
+    } else {
+        ...
+    }
+    
+    for 5 {
+        ...
+    }
+    
+    for (expr) {
+        ...
+    }
+    
+    for/i32: i = 0/i < 10/++i {
+        ...
+    }
 
     ret ReturnValue
 }
@@ -27,7 +45,7 @@ returnType::funcName par0Type: par0 par1Type: par1 ... {
 
 ### 외부 함수
 ```
-!ext
+!gl
 returnType::funcName par0Type: par0 par1Type: par1 .../
 ```
 

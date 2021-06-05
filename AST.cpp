@@ -17,21 +17,9 @@ IdentifierAST::IdentifierAST(void) {}
 IdentifierAST::IdentifierAST(const std::string& _id) : idName_(_id) {}
 
 llvm::Value* IdentifierAST::codegen(CodeGenContext& _cgc) noexcept {
-  auto& loc = _cgc.getLocal();
-  if (loc.find(idName_) == loc.end()) {
-    err("Undeclared identifier, \'" + idName_ + "\'");
-    return nullptr;
-  }
-
-  // TOOD: test
-
-  return _cgc.getBuilder().CreateLoad(llvm::Type::getLabelTy(_cgc.getLLVMCtx()),
-                                      loc[idName_]);
-  // return new llvm::LoadInst(llvm::Type::getLabelTy(_cgc.getLLVMCtx()),
-  //                           loc[idName_],
-  //                           "",
-  //                           false,
-  //                           _cgc.currentBlock());
+  if(auto val = _cgc.searchForVariable(idName_);
+     val.has_value())
+    return _cgc.getBuilder().CreateLoad(val.value());
 }
 
 llvm::Type* getTypeOf(llvm::LLVMContext& ctx,
@@ -141,19 +129,26 @@ VariableAST::VariableAST(const IdentifierAST& id,
 }
 
 llvm::Value* VariableAST::codegen(CodeGenContext& _cgc) noexcept {
+
+  // if(_cgc.getLocal()[varName_])
+  //   return _cgc.getLocal()[varName_];
+  if(auto val = _cgc.searchForVariable(varName_);
+     val.has_value())
+    return val.value();
+  
   llvm::Type* varTy;
   if(compileTimeType_)
+    // varTy = compileTimeType_->getPointerElementType();
     varTy = compileTimeType_;
   else {
     if(varType_.idName_.empty()) {
-      if(_cgc.getLocal()[varName_])
-        return _cgc.getLocal()[varName_];
-      else {
-        printErr("Unexpected type identifier \'" +
-                 varType_.idName_ + "\'");
-      }
-    } else
-      varTy = getTypeOf(_cgc.getLLVMCtx(), varType_);
+      printErr("Unexpected type identifier \'" +
+               varType_.idName_ + "\'");
+      return nullptr;
+    }
+    varTy = getTypeOf(_cgc.getLLVMCtx(), varType_);
+  }
+
     // varTy = getTypeOf(_cgc.getLLVMCtx(), varType_);
     
     // if (!varTy) {
@@ -165,26 +160,32 @@ llvm::Value* VariableAST::codegen(CodeGenContext& _cgc) noexcept {
     //     return nullptr;
     //   }
     // }
-  }
-  
-  // std::cout << "Creating alloca: " << varType_.idName_ << ": " << varName_
-  // << std::endl;
 
   llvm::AllocaInst* alloca =
-      _cgc.getBuilder().CreateAlloca(varTy, 0, varName_);
+      _cgc.getBuilder().CreateAlloca(varTy,
+                                     nullptr,
+                                     varName_);
 
   // TODO:
   _cgc.getLocal()[varName_] = alloca;
-  std::cout << varName_ << std::endl;
+
   if (varAssign_) {
     // AssignmentAST assign(varName_, varAssign_);
     // assign.codegen(_cgc);
     return varAssign_->codegen(_cgc);
   }
 
-  return _cgc.getBuilder().CreateLoad(alloca);
+  // return _cgc.getBuilder().CreateLoad(alloca);
 
-  // return alloca;
+  return alloca;
+}
+
+void VariableAST::setType(llvm::Type * ty) noexcept {
+  if(ty->getTypeID() == llvm::PointerType::PointerTyID) {
+    compileTimeType_ = ty->getPointerElementType();
+    return;
+  }
+  compileTimeType_ = ty;      
 }
 
 AssignmentAST::AssignmentAST(const std::string& lhs, SafeExprPtr rhs)
@@ -195,8 +196,8 @@ AssignmentAST::AssignmentAST(const std::string& lhs, SafeExprPtr rhs)
 llvm::Value* AssignmentAST::codegen(CodeGenContext& _cgc) noexcept {
   auto& local = _cgc.getLocal();
 
-  if (local.find(lhs_) == local.end())
-    satisfy::printErr("Undefined variable \'" + lhs_ + "\'");
+  // if (local.find(lhs_) == local.end())
+  //   satisfy::printErr("Undefined variable \'" + lhs_ + "\'");
 
   return _cgc.getBuilder().CreateStore(rhs_->codegen(_cgc), local[lhs_]);
 }
@@ -251,9 +252,6 @@ llvm::Value* CodeBlockAST::codegen(CodeGenContext& _cgc) noexcept {
 
   // _cgc.pushBlock(currentBlock);
 
-  auto& localVars = _cgc.getLocal();
-  std::string name;
-  
   ///
   for (auto it = exprs_.begin(); it != exprs_.end(); ++it)
     lastVal = it->get()->codegen(_cgc);
@@ -364,7 +362,8 @@ llvm::Value* BinaryOperatorAST::codegen(CodeGenContext& _cgc) noexcept {
   auto * rv = rhs_->codegen(_cgc);
 
   auto * v = reinterpret_cast<VariableAST *>(lhs_.get());
-  if(!v->varName_.empty()) // is variable
+  if(!v->varName_.empty()
+     && v->varType_.idName_.empty()) // is new variable
     v->setType(rv->getType());
   ;
 
@@ -388,18 +387,33 @@ llvm::Value* BinaryOperatorAST::codegen(CodeGenContext& _cgc) noexcept {
       instr = hasFP ? llvm::Instruction::FDiv : llvm::Instruction::SDiv;
       // TODO: UDIV
     case BinaryOperator::Set:
+
+      llvm::Type * ty = lv->getType();
+      if(llvm::dyn_cast<llvm::AllocaInst>(lv))
+        ty = ty->getPointerElementType();
+
       llvm::AllocaInst * addr
-          = _cgc.getBuilder().CreateAlloca(rv->getType(), (unsigned)0);
+          = _cgc.getBuilder().CreateAlloca(ty,
+                                           nullptr,
+                                           "tmp_" + lv->getName());
+
+      if(llvm::dyn_cast<llvm::AllocaInst>(rv))
+        rv = _cgc.getBuilder().CreateLoad(rv);
+
       _cgc.getBuilder().CreateStore(rv,
                                     addr);
-      return _cgc.getBuilder().CreateLoad(addr);
+
+      _cgc.getLocal()[lv->getName().begin()] = addr;
+      
+      return addr;
   }
-  
-  // return _cgc.getBuilder().CreateLoad(
-  //     _cgc.getBuilder().CreateBinOp(instr,
-  //                                   lv, rv));
-  return _cgc.getBuilder().CreateBinOp(instr,
-                                       lv, rv);
+
+  lv = codegen::toArithmeticValue(_cgc,
+                                  lv);
+  rv = codegen::toArithmeticValue(_cgc,
+                                  rv);
+
+  return _cgc.getBuilder().CreateBinOp(instr, lv, rv);
 }
 
 FunctionAST::FunctionAST(const std::string& funcName,
@@ -470,9 +484,12 @@ ReturnAST::ReturnAST(SafeExprPtr sep)
 }
 
 llvm::Value* ReturnAST::codegen(CodeGenContext& _cgc) noexcept {
-  return _cgc.getBuilder().CreateRet(
-      _cgc.getBuilder().CreateLoad(ret_->codegen(_cgc)));
   // return _cgc.getBuilder().CreateRet(ret_->codegen(_cgc));
+  llvm::Value * val = ret_->codegen(_cgc);
+  if(llvm::dyn_cast<llvm::AllocaInst>(val))
+    return _cgc.getBuilder().CreateRet(
+        _cgc.getBuilder().CreateLoad(val));
+  return _cgc.getBuilder().CreateRet(val);
 }
 
 IfAST::IfAST(SafeExprPtr _if, CodeBlockAST _then) : if_(_if), then_(_then) {}
@@ -503,7 +520,8 @@ llvm::Value * IfAST::codegen(CodeGenContext & _cgc) noexcept {
   auto * brV = _cgc.getBuilder().CreateCondBr(condV, bThen, bElse);
 
   // create 'then'
-  _cgc.getBuilder().SetInsertPoint(bThen);
+  // _cgc.getBuilder().SetInsertPoint(bThen);
+  _cgc.pushBlock(bThen);
   llvm::Value * thenV = this->then_.codegen(_cgc);
 
   if(auto & lastInstr = _cgc.getBuilder().GetInsertBlock()->getInstList().back();
@@ -514,11 +532,13 @@ llvm::Value * IfAST::codegen(CodeGenContext & _cgc) noexcept {
   }
   // get end of 'then' block
   bThen = _cgc.getBuilder().GetInsertBlock();
+  _cgc.popBlock();
 
   ;
 
   _cgc.currentBlock()->getParent()->getBasicBlockList().push_back(bElse);
-  _cgc.getBuilder().SetInsertPoint(bElse);
+  // _cgc.getBuilder().SetInsertPoint(bElse);
+  _cgc.pushBlock(bElse);
   llvm::Value * elseV = this->else_.codegen(_cgc);
 
   if (auto &lastInstr =
@@ -529,11 +549,13 @@ llvm::Value * IfAST::codegen(CodeGenContext & _cgc) noexcept {
   }
 
   bElse = _cgc.getBuilder().GetInsertBlock();
+  _cgc.popBlock();
 
   ;
   
   _cgc.currentBlock()->getParent()->getBasicBlockList().push_back(bMerge);
   _cgc.getBuilder().SetInsertPoint(bMerge);
+  // won't push
 
   return bMerge;
 }

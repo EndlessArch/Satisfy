@@ -23,6 +23,19 @@ namespace codegen {
     return nullptr;
   }
 
+  bool
+  isArithmeticValue(llvm::Value * val) noexcept {
+    return val->getType()->getTypeID()
+        != llvm::PointerType::PointerTyID;
+  }
+  
+  llvm::Value *
+  toArithmeticValue(CodeGenContext & _cgc, llvm::Value * val) noexcept {
+    if(isArithmeticValue(val))
+      return val;
+    return _cgc.getBuilder().CreateLoad(val);
+  }
+
   CodeGenBlock::CodeGenBlock(llvm::BasicBlock * _bb)
     : bb_(_bb) {
     ;
@@ -39,9 +52,9 @@ namespace codegen {
   }
 
   CodeGenContext::~CodeGenContext() {
-    std::cerr << "Dumping...\n\"";
+    std::cerr << "Dumping... results\n\"\n";
     llvmModule_.print(llvm::errs(), nullptr);
-    std::cerr << "\"Done.\n";
+    std::cerr << "\"\nDone.\n";
   }
 
   void CodeGenContext::generateCode(ast::CodeAST & codeBlock) noexcept {

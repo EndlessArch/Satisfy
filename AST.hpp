@@ -100,10 +100,7 @@ namespace ast {
     VariableAST(const IdentifierAST &, std::string, SafeExprPtr);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
 
-    inline
-    void setType(llvm::Type * ty) noexcept {
-      compileTimeType_ = ty;
-    }
+    void setType(llvm::Type *) noexcept;
    private:
     llvm::Type * compileTimeType_;
 
@@ -231,6 +228,8 @@ class IfAST : public ExprAST {
 
   llvm::Value * codegen(CodeGenContext &) noexcept;
 };
+
+
 
 } // ns ast
 } // ns satisfy

@@ -22,6 +22,12 @@ namespace codegen {
   llvm::Type *
   getBasicInt(llvm::LLVMContext &) noexcept;
 
+bool
+isArithmeticValue(llvm::Value *) noexcept;
+
+llvm::Value *
+toArithmeticValue(CodeGenContext & _cgc, llvm::Value *) noexcept;
+
   struct CodeGenBlock {
     llvm::BasicBlock * bb_;
     // something locals
