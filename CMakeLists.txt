@@ -13,6 +13,13 @@ find_package(LLVM REQUIRED)
 
 if(NOT LLVM_FOUND)
   message(FATAL "Failed to find llvm.\nSet LLVM_ROOT_DIR")
+else()
+  message(${LLVM_ROOT_DIR})
+endif()
+
+if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+  add_compile_options(-g)
+  message("Added debug options")
 endif()
 
 file(GLOB SOURCE_FILES

@@ -63,7 +63,7 @@ namespace satisfy {
 
   void printErr(const char * str) noexcept {
     std::cerr << "error("
-              << (error::_row + 1) << ", " << (error::_col + 1)
+              << (error::_row + 2) << ", " << (error::_col + 2)
               << "): " << str << '\n';
   }
 

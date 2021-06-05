@@ -87,8 +87,7 @@ namespace parser {
     return _numVal;
   }
 
-  satisfy::token::TokenType
-  getNextToken(void) noexcept;
+  satisfy::token::TokenType getNextToken(void) noexcept;
 
   void setCRLF(bool b) noexcept {
     _switches.set(0, b);

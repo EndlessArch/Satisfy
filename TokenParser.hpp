@@ -4,19 +4,29 @@
 #include <vector>
 
 #include "AST.hpp"
+#include "Token.hpp"
 
 using namespace satisfy::ast;
+
+using satisfy::token::TokenType;
 
 namespace satisfy {
 namespace tokParser {
 
-void parseStatement(CodeAST &) noexcept;
+namespace details {
+bool isIdentifier(TokenType) noexcept;
+}
+
+SafeExprPtr parseStatement(void) noexcept;
+SafeExprPtr parseExpression(void) noexcept;
 
 std::vector<VariableAST> parseList(CodeAST &) noexcept;
 
-void parseBlock(FunctionAST &, CodeBlockAST &) noexcept;
+void parseContents(CodeBlockAST &) noexcept;
 
-void parseIdentifier(CodeAST &) noexcept;
+void parseBlock(CodeBlockAST &) noexcept;
+
+void parseRootExpression(CodeAST &) noexcept;
 
 void parseLoop(CodeAST &) noexcept;
 

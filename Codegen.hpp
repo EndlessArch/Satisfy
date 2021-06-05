@@ -45,11 +45,6 @@ namespace codegen {
 
     void generateCode(ast::CodeAST &) noexcept;
 
-    inline
-    bool isOnBaseCode(void) noexcept {
-      return blocks_.empty();
-    }
-
     std::map<std::string, llvm::Value *> & getLocal(void) noexcept;
     std::optional<llvm::Value *>
     searchForVariable(const std::string &) noexcept;

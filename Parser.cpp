@@ -109,7 +109,7 @@ namespace parser {
 
     if(flag_dash ||
        lch == '+' || lch == '>' ||
-       lch == '*' || lch == '/' ||
+       lch == '*' || lch == '|' ||
        lch == '%' || lch == '=') {
       _identifierStr = (char)lch;
       lch = getNextChar(); // skip

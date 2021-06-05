@@ -4,6 +4,9 @@
 #include "AST.hpp"
 #include "Codegen.hpp"
 #include "Token.hpp"
+
+#include "TokenParser.hpp"
+
 #include "Parser.hpp"
 #include "Error.hpp"
 
@@ -152,7 +155,7 @@ int main(int argc, char * argv[]) {
   
   CodeAST codes;
 
-  parseLoop(codes);
+  satisfy::tokParser::parseLoop(codes);
 
   ctx.generateCode(codes);
 

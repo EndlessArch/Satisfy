@@ -28,9 +28,9 @@ void printErr(std::string) noexcept;
   as err() is macro, and also uses macros,
   functions which involved to it must be macro.
 */
+#define err_expr_expected() err("Expected expression")
 #define err_expr_unexpected() err("Unexpected expression")
 #define err_idf_expected() err("Expected identifier")
 #define err_ie_expected() err("Expected identifier or expression")
-// #define 
 
 #endif // SATISFY_ERROR_HPP

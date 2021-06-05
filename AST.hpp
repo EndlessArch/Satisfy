@@ -5,6 +5,7 @@
 #include <list>
 #include <string>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <llvm/IR/Value.h>
 
@@ -20,7 +21,7 @@ using satisfy::codegen::CodeGenContext;
 
 namespace satisfy {
 namespace ast {
-
+;
   class AST {
   public:
     virtual ~AST() = default;
@@ -99,6 +100,13 @@ namespace ast {
     VariableAST(const IdentifierAST &, std::string, SafeExprPtr);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
 
+    inline
+    void setType(llvm::Type * ty) noexcept {
+      compileTimeType_ = ty;
+    }
+   private:
+    llvm::Type * compileTimeType_;
+
     // friend bool isFloatingPoint(llvm::LLVMContext&, VariableAST&) noexcept;
     // friend class ReassignmentAST;
     // friend class UnaryOperatorAST;
@@ -121,32 +129,33 @@ namespace ast {
     llvm::Value * codegen(CodeGenContext &) noexcept override;
   };
 
-  class CodeBlockAST : public ExprAST {
-    std::string blockName_;
-    llvm::Function * parent_;
-    llvm::BasicBlock * bb_;
-    std::list<SafeExprPtr> exprs_ {};
+  class CodeAST : public ExprAST {
+   protected:
+    std::list<SafeExprPtr> exprs_;
   public:
-    CodeBlockAST(llvm::BasicBlock *, llvm::Function * = nullptr);
-    CodeBlockAST(std::string = "", llvm::Function * = nullptr);
-    CodeBlockAST(SafeExprPtr, std::string = "", llvm::Function * = nullptr);
-    CodeBlockAST(std::initializer_list<SafeExprPtr>, std::string = "", llvm::Function * = nullptr);
+    CodeAST(void);
+    CodeAST(SafeExprPtr);
+    CodeAST(std::initializer_list<SafeExprPtr>);
+    llvm::Value * codegen(CodeGenContext &) noexcept override;
+    void push(SafeExprPtr) noexcept;
+
+    inline
+    std::size_t getExprSize(void) noexcept {
+      return exprs_.size();
+    }
+  };
+  
+  class CodeBlockAST : public CodeAST {
+    std::string blockName_;
+  public:
+    CodeBlockAST(std::string = "");
+    CodeBlockAST(SafeExprPtr, std::string = "");
+    CodeBlockAST(std::initializer_list<SafeExprPtr>, std::string = "");
 
     llvm::Value * codegen(CodeGenContext &) noexcept override;
 
     void push(SafeExprPtr) noexcept;
     void setBlockName(const std::string &) noexcept;
-    void setBlock(llvm::BasicBlock *) noexcept;
-
-    inline
-    std::size_t getExprSize() const noexcept {
-      return exprs_.size();
-    }
-
-    inline
-    llvm::Function * getParent() noexcept {
-      return parent_;
-    }
   };
 
   // ++ --
@@ -170,15 +179,17 @@ namespace ast {
     Add,
     Sub,
     Mul,
-    Div
+    Div,
+
+    Set,
   };
 
   class BinaryOperatorAST : public ExprAST {
     BinaryOperator op_;
     SafeExprPtr lhs_, rhs_;
-    bool hasFP;
   public:
-    BinaryOperatorAST(BinaryOperator, SafeExprPtr, SafeExprPtr, bool);
+    BinaryOperatorAST(std::string, SafeExprPtr, SafeExprPtr);
+    BinaryOperatorAST(BinaryOperator, SafeExprPtr, SafeExprPtr);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
   };
 
@@ -186,44 +197,40 @@ namespace ast {
     std::string funcName_;
     IdentifierAST retType_;
     std::vector<VariableAST> params_;
-    CodeBlockAST cb_;
+    std::optional<CodeBlockAST> cb_;
 
   public:
     FunctionAST(const std::string &,
                 const IdentifierAST &,
                 const std::vector<VariableAST> &,
-                const CodeBlockAST & = NULL);
+                const std::optional<CodeBlockAST> &);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
-    inline void setCodeBody(const CodeBlockAST & cb) noexcept {
-      cb_ = cb;
-    }
 
-    inline IdentifierAST
-    getFuncRetType(void) noexcept {
-      return retType_;
-    }
+    // inline IdentifierAST
+    // getFuncRetType(void) noexcept {
+    //   return retType_;
+    // }
   };
 
   class ReturnAST : public ExprAST {
-    std::variant<VariableAST, NumberAST> ret_;
+    SafeExprPtr ret_;
 
   public:
-    template <typename AST>
-    ReturnAST(AST && ast)
-      : ret_(std::forward<AST>(ast)) {
-    }
+    ReturnAST(SafeExprPtr);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
   };
 
-  class CodeAST : public ExprAST {
-    std::list<SafeExprPtr> exprs_;
-  public:
-    CodeAST(void);
-    CodeAST(SafeExprPtr);
-    CodeAST(std::initializer_list<SafeExprPtr>);
-    llvm::Value * codegen(CodeGenContext &) noexcept override;
-    void push(SafeExprPtr) noexcept;
-  };
+class IfAST : public ExprAST {
+  SafeExprPtr if_;
+  CodeBlockAST then_;
+  CodeBlockAST else_;
+ public:
+  IfAST(SafeExprPtr, CodeBlockAST);
+  void pushElse(CodeBlockAST &) noexcept;
+  // void pushElse(SafeExprPtr) noexcept;
+
+  llvm::Value * codegen(CodeGenContext &) noexcept;
+};
 
 } // ns ast
 } // ns satisfy
