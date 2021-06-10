@@ -40,7 +40,11 @@ namespace parser {
     }
 
     if(lch == '/') {
-      lch = getNextChar();
+      if((lch = getNextChar()) == '=') {
+        _identifierStr = "/=";
+        lch = getNextChar();
+        return returnToken(TokenType::tokenOperator);
+      }
       return returnToken(TokenType::tokenSeperator);
     }
 
@@ -62,6 +66,22 @@ namespace parser {
         lch = getNextChar();
         return returnToken(TokenType::tokenClassDecl);
       }
+      if(lch == '=') {
+        _identifierStr = "<=";
+        lch = getNextChar();
+        // return returnToken(TokenType::tokenOperator);
+      }
+      _identifierStr = '<';
+      return returnToken(TokenType::tokenOperator);
+    }
+
+    if(lch == '+') {
+      if((lch = getNextChar()) == '+') {
+        _identifierStr = "++";
+        lch = getNextChar();
+      } else
+        _identifierStr = '+';
+        
       return returnToken(TokenType::tokenOperator);
     }
 
@@ -69,13 +89,19 @@ namespace parser {
     bool isCurTokDigit = false;
     
     if(flag_dash) {
-      _identifierStr = (char)lch;
       if((lch = getNextChar()) == '>') {
         _identifierStr = "->";
         lch = getNextChar();
         return returnToken(TokenType::tokenClassDecl);
       }
 
+      if(lch == '-') {
+        _identifierStr = "--";
+        lch = getNextChar();
+        return returnToken(TokenType::tokenOperator);
+      }
+      
+      _identifierStr = '-';
       isCurTokDigit = isDigit(lch);
       if(!isCurTokDigit)
         return returnToken(TokenType::tokenOperator);
@@ -107,10 +133,21 @@ namespace parser {
       return returnToken(TokenType::tokenNumber);
     }
 
-    if(flag_dash ||
-       lch == '+' || lch == '>' ||
-       lch == '*' || lch == '|' ||
-       lch == '%' || lch == '=') {
+    if(lch == '=') {
+      if((lch = getNextChar()) == '>') {
+        _identifierStr = "=>";
+        lch = getNextChar();
+      } else if(lch == '=') {
+        _identifierStr = "==";
+        lch = getNextChar();
+      } else
+        _identifierStr = '=';
+      return returnToken(TokenType::tokenOperator);
+    }
+
+    if (flag_dash || lch == '>' ||
+        lch == '*' || lch == '|' ||
+        lch == '%') {
       _identifierStr = (char)lch;
       lch = getNextChar(); // skip
       return returnToken(TokenType::tokenOperator);

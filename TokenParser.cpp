@@ -47,10 +47,52 @@ SafeExprPtr parseStatement(void) noexcept {
 
     block.push(SafeExprPtr(new IfAST(ifast)));
   }
-  else
+  else if(stmt == "for") {
+    if(getNextToken() == TokenType::tokenNumber) {
+      // number for
+      CodeBlockAST forBlock;
+      parseBlock(forBlock);
+      block.push(
+          SafeExprPtr(
+              (ExprAST *)new ForAST(
+                  parseExpression(),
+                  SafeExprPtr((ExprAST *)new CodeBlockAST(forBlock)))));
+    } else {
+      CodeBlockAST init, forBlock;
+      SafeExprPtr sep = parseExpression();
+      if(_curTok != TokenType::tokenBlock) {
+        init.push(sep);
+        while(_curTok != TokenType::tokenSeperator) {
+          sep = parseExpression();
+          init.push(sep);
+        }
+
+        getNextToken();
+        
+        SafeExprPtr cond = parseExpression();
+
+        if(_curTok == TokenType::tokenSeperator) {
+          getNextToken();
+          SafeExprPtr upd = parseExpression();
+          parseBlock(forBlock);
+          std::cout << "Parsed for-block\n";
+          block.push(
+              SafeExprPtr((ExprAST *)new ForAST(
+                  SafeExprPtr((ExprAST *)new CodeBlockAST(init)), cond, upd,
+                  SafeExprPtr((ExprAST *)new CodeBlockAST(forBlock)))));
+        } else
+          printErr("Expected seperator");
+      } else {
+        parseBlock(forBlock);
+        block.push(SafeExprPtr(
+            new ForAST(sep,
+                       SafeExprPtr((ExprAST *)new CodeBlockAST(forBlock)))));
+      }
+    }
+  } else
     block.push(parseExpression());
 
-  return SafeExprPtr(new CodeBlockAST(block));
+  return SafeExprPtr((ExprAST *)new CodeBlockAST(block));
 }
 
 SafeExprPtr parseExpression(void) noexcept {
@@ -59,52 +101,104 @@ SafeExprPtr parseExpression(void) noexcept {
   do {
     switch (static_cast<TokenType>(_curTok)) {
       case TokenType::tokenIdentifier:
-        if (lhs.get()) return lhs;
-        lhs = SafeExprPtr((ExprAST *)new VariableAST(getIdentifierStr()));
+        {
+          if (lhs.get()) return lhs;
+          std::string name = getIdentifierStr();
+          if(getNextToken() == TokenType::tokenSeperator) {
+            // call function
+            getNextToken();
+            std::vector<VariableAST> argList = parseList();
+            // eat seperator
+            getNextToken();
+
+            return SafeExprPtr(new CallAST(name, argList));
+          }
+          lhs = SafeExprPtr((ExprAST *)new VariableAST(name));
+        }
         break;
       case TokenType::tokenNumber:
         if (lhs.get()) return lhs;
         lhs = SafeExprPtr(
-            (ExprAST *)new NumberAST(IdentifierAST("int"), getNumVal()));
+            (ExprAST *)new NumberAST("int", getNumVal()));
+        getNextToken();
         break;
-      case TokenType::tokenBlock:
-        // getNextToken();
-        // break;
-        if(!lhs.get()) {
-          std::cout << "Breaking...\n";
+      case TokenType::tokenType:
+        if(getNextToken() != TokenType::tokenIdentifier) {
+          err_idf_expected();
+          getNextToken(); // skip
+          return lhs;
         }
+        {
+          std::string varName = getIdentifierStr();
+          getNextToken();
+          std::cout << "\"" << reinterpret_cast<VariableAST *>(lhs.get())->varName_ << "\"" << std::endl;
+          lhs = SafeExprPtr((ExprAST *)new VariableAST(
+              reinterpret_cast<VariableAST *>(lhs.get())->varName_, varName));
+        }
+        break;
+      case TokenType::tokenSeperator:
+      case TokenType::tokenBlock:
+        if(getIdentifierStr() == "{") {
+          CodeBlockAST block;
+          parseBlock(block);
+          return SafeExprPtr((ExprAST *)new CodeBlockAST(block));
+        }
+#ifndef NDEBUG
+        if(!lhs.get()) {
+          err_expr_expected();
+          assert(false);
+        }
+#endif
         return lhs;
       case TokenType::tokenOperator:
         {
+#ifndef NDEBUG
+          if(!lhs.get()) {
+            std::string op = getIdentifierStr();
+            getNextToken();
+
+            if (_curTok != TokenType::tokenIdentifier) {
+              err_idf_expected();
+              assert(false);
+            }
+
+            lhs = SafeExprPtr((ExprAST *)new UnaryOperatorAST(
+                op, VariableAST(getIdentifierStr())));
+            break;
+          }
+#endif
           auto op = getIdentifierStr();
 
           getNextToken();
 
           lhs = SafeExprPtr(
               (ExprAST *)new BinaryOperatorAST(op, lhs, parseExpression()));
+
+          ;
         }
         return lhs;
       default:
         if(lhs.get())
           return lhs;
         err_expr_expected();
+        assert(false);
     }
-  } while (getNextToken() != TokenType::tokenEOF);
+  } while (_curTok != TokenType::tokenEOF);
 
   return lhs;  // IDK
 }
 
-std::vector<VariableAST> parseList(CodeAST &_ca) noexcept {
+std::vector<VariableAST> parseList(void) noexcept {
   std::vector<VariableAST> list;
   
-  IdentifierAST type;
+  std::string type;
   std::string name;
 
   while (!(_curTok == TokenType::tokenBlock && getIdentifierStr() == "{")
          && _curTok != TokenType::tokenSeperator) {
     if (!details::isIdentifier(_curTok)) return {};
 
-    type = IdentifierAST(satisfy::parser::getIdentifierStr());
+    type = satisfy::parser::getIdentifierStr();
 
     if (getNextToken() != TokenType::tokenType) {
       printErr("Expected variable type expression(\':\')");
@@ -136,16 +230,25 @@ void parseContents(CodeBlockAST & _cb) noexcept {
       case TokenType::tokenIdentifier:
         _cb.push(parseStatement());
         break;
+
+      case TokenType::tokenBlock:
+        {
+          CodeBlockAST block;
+          parseBlock(block);
+          _cb.push(SafeExprPtr(new CodeBlockAST(block)));
+          break;
+        }
         
       default:
-        ;
+        std::cout << "Unhandled type; \'" << getIdentifierStr() << "\'\n";
+        getNextToken();
     }
   }
 
   return;
 }
 
-void parseBlock(CodeBlockAST &_cb) noexcept {
+void parseBlock(CodeBlockAST & _cb) noexcept {
   // eat {
   getNextToken();
 
@@ -157,10 +260,10 @@ void parseBlock(CodeBlockAST &_cb) noexcept {
   return;
 }
 
-void parseRootExpression(CodeAST &_ca) noexcept {
-  IdentifierAST type(satisfy::parser::getIdentifierStr());
+void parseRootExpression(CodeAST & _ca) noexcept {
+  std::string type(satisfy::parser::getIdentifierStr());
 
-  // -> variable
+  // -> global variable
   if (getNextToken() == TokenType::tokenType) {
     // variable type
     if (!details::isIdentifier(getNextToken())) return;
@@ -181,7 +284,7 @@ void parseRootExpression(CodeAST &_ca) noexcept {
       SafeExprPtr get;
       if (_curTok == TokenType::tokenIdentifier)
         get = SafeExprPtr(
-            (ExprAST *)new IdentifierAST(satisfy::parser::getIdentifierStr()));
+            (ExprAST *)new VariableAST(satisfy::parser::getIdentifierStr()));
       else
         get = SafeExprPtr(
             (ExprAST *)new NumberAST(type, satisfy::parser::getNumVal()));
@@ -218,7 +321,7 @@ void parseRootExpression(CodeAST &_ca) noexcept {
     // get function parameters
     if (getNextToken() != TokenType::tokenBlock
         && _curTok != TokenType::tokenSeperator)
-      argList = parseList(_ca);
+      argList = parseList();
     else {
       FunctionAST funcDecl(funcName, type, {}, {});
       _ca.push(SafeExprPtr(new FunctionAST(funcDecl)));

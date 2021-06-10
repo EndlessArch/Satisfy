@@ -20,7 +20,7 @@ bool isIdentifier(TokenType) noexcept;
 SafeExprPtr parseStatement(void) noexcept;
 SafeExprPtr parseExpression(void) noexcept;
 
-std::vector<VariableAST> parseList(CodeAST &) noexcept;
+std::vector<VariableAST> parseList(void) noexcept;
 
 void parseContents(CodeBlockAST &) noexcept;
 

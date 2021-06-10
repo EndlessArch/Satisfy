@@ -21,7 +21,14 @@ using satisfy::codegen::CodeGenContext;
 
 namespace satisfy {
 namespace ast {
-;
+
+enum class ASTResultType {
+  Unknown = -1,
+  Number = -2,
+  TypeUnspecified = -3,
+  Typed = -4
+};
+
   class AST {
   public:
     virtual ~AST() = default;
@@ -29,13 +36,15 @@ namespace ast {
     // Hate virtual functions,
     // but can't help with CRTP, so..
     virtual llvm::Value * codegen(CodeGenContext &) noexcept = 0;
+
+    virtual ASTResultType expectedType(void) noexcept {
+      return ASTResultType::Unknown;
+    };
   };
 
   class ExprAST : public AST {};
 
   /////
-
-  class IdentifierAST;
 
   inline llvm::Type *
   returnTypeOf(llvm::Type * ty) noexcept {
@@ -43,14 +52,12 @@ namespace ast {
   }
 
   llvm::Type *
-  getTypeOf(llvm::LLVMContext &, const IdentifierAST &) noexcept;
+  getTypeOf(llvm::LLVMContext &, const std::string &) noexcept;
 
   /////
 
   // class AssignmentAST;
   class VariableAST;
-
-  bool isFloatingPoint(llvm::LLVMContext &, VariableAST &) noexcept;
 
   /////
 
@@ -60,45 +67,34 @@ namespace ast {
 
   /////
 
-  class IdentifierAST : public AST {
-  public:
-    std::string idName_;
-  // public:
-    IdentifierAST(void);
-    IdentifierAST(const std::string &);
-    llvm::Value * codegen(CodeGenContext &) noexcept override;
-
-    // friend llvm::Type* getTypeOf(llvm::LLVMContext&,
-    //                              const IdentifierAST&) noexcept;
-    // friend class AssignmentAST;
-    // friend class VariableAST;
-  };
-
   using SafeExprPtr = std::shared_ptr<ExprAST>;
 
   class NumberAST : public AST {
-    IdentifierAST targetType_;
+    std::string targetType_;
     llvm::Type * typePtr_ = nullptr;
     satisfy::parser::value_type val_;
   public:
     NumberAST(llvm::Type *, parser::value_type);
-    NumberAST(IdentifierAST, parser::value_type);
+    NumberAST(std::string, parser::value_type);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
+
+    ASTResultType expectedType(void) noexcept override;
   };
 
   class VariableAST : public AST {
   public:
-    IdentifierAST varType_;
+    std::string varType_;
     std::string varName_;
   private:
     // assignment expression
     SafeExprPtr varAssign_;
   public:
     // VariableAST() = delete;
-    VariableAST(std::string);
-    VariableAST(const IdentifierAST &, std::string);
-    VariableAST(const IdentifierAST &, std::string, SafeExprPtr);
+    VariableAST(const std::string &);
+    VariableAST(const std::string &, const std::string &);
+    VariableAST(const std::string &, const std::string &, SafeExprPtr);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
+    ASTResultType expectedType(void) noexcept override;
 
     void setType(llvm::Type *) noexcept;
    private:
@@ -157,18 +153,17 @@ namespace ast {
 
   // ++ --
   enum class UnaryOperator {
-    PreAddOperator,
-    PreSubOperator,
-    PostAddOperator,
-    PostSubOperator,
+    IncOperator,
+    DecOperator
   };
 
   class UnaryOperatorAST : public ExprAST {
     UnaryOperator op_;
     VariableAST var_;
   public:
+    UnaryOperatorAST(const std::string &, const VariableAST &);
     UnaryOperatorAST(UnaryOperator,
-                     VariableAST &);
+                     const VariableAST &);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
   };
 
@@ -179,6 +174,15 @@ namespace ast {
     Div,
 
     Set,
+
+    EQ,
+    NE,
+
+    GT,
+    GE,
+
+    LT,
+    LE,
   };
 
   class BinaryOperatorAST : public ExprAST {
@@ -192,21 +196,16 @@ namespace ast {
 
   class FunctionAST : public ExprAST {
     std::string funcName_;
-    IdentifierAST retType_;
+    std::string retType_;
     std::vector<VariableAST> params_;
     std::optional<CodeBlockAST> cb_;
 
   public:
     FunctionAST(const std::string &,
-                const IdentifierAST &,
+                const std::string &,
                 const std::vector<VariableAST> &,
                 const std::optional<CodeBlockAST> &);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
-
-    // inline IdentifierAST
-    // getFuncRetType(void) noexcept {
-    //   return retType_;
-    // }
   };
 
   class ReturnAST : public ExprAST {
@@ -216,6 +215,15 @@ namespace ast {
     ReturnAST(SafeExprPtr);
     llvm::Value * codegen(CodeGenContext &) noexcept override;
   };
+;
+
+class CallAST : public ExprAST {
+  std::string func_;
+  std::vector<VariableAST> args_;
+ public:
+  CallAST(std::string, std::vector<VariableAST>);
+  llvm::Value * codegen(CodeGenContext &) noexcept override;
+};
 
 class IfAST : public ExprAST {
   SafeExprPtr if_;
@@ -226,10 +234,23 @@ class IfAST : public ExprAST {
   void pushElse(CodeBlockAST &) noexcept;
   // void pushElse(SafeExprPtr) noexcept;
 
-  llvm::Value * codegen(CodeGenContext &) noexcept;
+  llvm::Value * codegen(CodeGenContext &) noexcept override;
 };
 
+enum class ForE {
+  ByNumber,
+  ByBoolVar,
+  ByExplicit
+};
 
+class ForAST : public ExprAST {
+  ForE forE_;
+  SafeExprPtr comp_[4];
+public:
+  ForAST(SafeExprPtr, SafeExprPtr);
+  ForAST(SafeExprPtr, SafeExprPtr, SafeExprPtr, SafeExprPtr);
+  llvm::Value * codegen(CodeGenContext &) noexcept override;
+};
 
 } // ns ast
 } // ns satisfy

@@ -12,54 +12,39 @@
 namespace satisfy {
 namespace ast {
 
-IdentifierAST::IdentifierAST(void) {}
-
-IdentifierAST::IdentifierAST(const std::string& _id) : idName_(_id) {}
-
-llvm::Value* IdentifierAST::codegen(CodeGenContext& _cgc) noexcept {
-  if(auto val = _cgc.searchForVariable(idName_);
-     val.has_value())
-    return _cgc.getBuilder().CreateLoad(val.value());
-}
-
 llvm::Type* getTypeOf(llvm::LLVMContext& ctx,
-                      const IdentifierAST& id) noexcept {
-  if (id.idName_ == "int" || id.idName_ == "uint")
+                      const std::string & id) noexcept {
+  if (id == "int" || id == "uint")
     return returnTypeOf(codegen::getBasicInt(ctx));
 
-  if (id.idName_ == "char" || id.idName_ == "i8" || id.idName_ == "u8")
+  if (id == "bool" || id == "char"
+      || id == "i8" || id == "u8")
     return returnTypeOf(llvm::Type::getInt8Ty(ctx));
 
-  if (id.idName_ == "i16" || id.idName_ == "u16")
+  if (id == "i16" || id == "u16")
     return returnTypeOf(llvm::Type::getInt16Ty(ctx));
 
-  if (id.idName_ == "i32" || id.idName_ == "u32")
+  if (id == "i32" || id == "u32")
     return returnTypeOf(llvm::Type::getInt32Ty(ctx));
 
-  if (id.idName_ == "i64" || id.idName_ == "u64")
+  if (id == "i64" || id == "u64")
     return returnTypeOf(llvm::Type::getInt64Ty(ctx));
 
-  if (id.idName_ == "float" || id.idName_ == "f32")
+  if (id == "float" || id == "f32")
     return returnTypeOf(llvm::Type::getFloatTy(ctx));
 
-  if (id.idName_ == "double" || id.idName_ == "f64")
+  if (id == "double" || id == "f64")
     return returnTypeOf(llvm::Type::getDoubleTy(ctx));
 
   return nullptr;
 }
 
-bool isFloatingPoint(llvm::LLVMContext& ctx, VariableAST& var) noexcept {
-  auto* ty = getTypeOf(ctx, var.varType_);
-  return ty == llvm::Type::getFloatTy(ctx) ||
-         ty == llvm::Type::getDoubleTy(ctx);
-}
-
 NumberAST::NumberAST(llvm::Type* type, parser::value_type val)
-    : targetType_(IdentifierAST("")), val_(val) {
+    : targetType_(""), val_(val) {
   ;
 }
 
-NumberAST::NumberAST(IdentifierAST type, parser::value_type val)
+NumberAST::NumberAST(std::string type, parser::value_type val)
     : targetType_(type), val_(val) {
   ;
 }
@@ -70,7 +55,7 @@ llvm::Value* NumberAST::codegen(CodeGenContext& _cgc) noexcept {
 
   int bits;
   if (typePtr_)
-    bits = dl.getTypeAllocSize(typePtr_);
+    bits = (int)dl.getTypeAllocSize(typePtr_);
   else
     bits = dl.getTypeSizeInBits(getTypeOf(_cgc.getLLVMCtx(), targetType_));
 
@@ -111,20 +96,24 @@ llvm::Value* NumberAST::codegen(CodeGenContext& _cgc) noexcept {
   return nullptr;
 }
 
-VariableAST::VariableAST(std::string varName)
-    : varType_(""), varName_(varName) {
+ASTResultType NumberAST::expectedType(void) noexcept {
+  return ASTResultType::Number;
+}
+
+VariableAST::VariableAST(const std::string & varName)
+    : varType_(""), varName_(varName), compileTimeType_(nullptr) {
   ;
 }
 
-VariableAST::VariableAST(const IdentifierAST& id, std::string varName)
-    : varType_(id), varName_(varName) {
-  ;
+VariableAST::VariableAST(const std::string & id, const std::string & varName)
+    : varType_(id), varName_(varName), compileTimeType_(nullptr) {
+  compileTimeType_ = nullptr;
 }
 
-VariableAST::VariableAST(const IdentifierAST& id,
-                         std::string varName,
+VariableAST::VariableAST(const std::string & id,
+                         const std::string & varName,
                          SafeExprPtr varAssign)
-    : varType_(id), varName_(varName), varAssign_(varAssign) {
+    : varType_(id), varName_(varName), varAssign_(varAssign), compileTimeType_(nullptr) {
   ;
 }
 
@@ -141,9 +130,9 @@ llvm::Value* VariableAST::codegen(CodeGenContext& _cgc) noexcept {
     // varTy = compileTimeType_->getPointerElementType();
     varTy = compileTimeType_;
   else {
-    if(varType_.idName_.empty()) {
+    if(varType_.empty()) {
       printErr("Unexpected type identifier \'" +
-               varType_.idName_ + "\'");
+               varType_ + "\'");
       return nullptr;
     }
     varTy = getTypeOf(_cgc.getLLVMCtx(), varType_);
@@ -161,10 +150,14 @@ llvm::Value* VariableAST::codegen(CodeGenContext& _cgc) noexcept {
     //   }
     // }
 
+  std::cout << varType_ << ": " << varName_ << std::endl;
+  std::cout << varTy << std::endl;
+
   llvm::AllocaInst* alloca =
       _cgc.getBuilder().CreateAlloca(varTy,
                                      nullptr,
                                      varName_);
+  std::cout << "Created alloca\n";
 
   // TODO:
   _cgc.getLocal()[varName_] = alloca;
@@ -178,6 +171,12 @@ llvm::Value* VariableAST::codegen(CodeGenContext& _cgc) noexcept {
   // return _cgc.getBuilder().CreateLoad(alloca);
 
   return alloca;
+}
+
+ASTResultType VariableAST::expectedType(void) noexcept {
+  if(compileTimeType_ || !varType_.empty())
+    return ASTResultType::Typed;
+  return ASTResultType::TypeUnspecified;
 }
 
 void VariableAST::setType(llvm::Type * ty) noexcept {
@@ -274,66 +273,56 @@ void CodeBlockAST::setBlockName(const std::string& blockName) noexcept {
   blockName_ = blockName;
 }
 
-UnaryOperatorAST::UnaryOperatorAST(UnaryOperator op, VariableAST& var)
+UnaryOperatorAST::UnaryOperatorAST(const std::string &op,
+                                   const VariableAST &var)
+    : var_(var) {
+  if (op == "++")
+    op_ = UnaryOperator::IncOperator;
+  else if(op == "--")
+    op_ = UnaryOperator::DecOperator;
+}
+
+UnaryOperatorAST::UnaryOperatorAST(UnaryOperator op, const VariableAST& var)
     : op_(op), var_(var) {
   ;
 }
 
 llvm::Value* UnaryOperatorAST::codegen(CodeGenContext& _cgc) noexcept {
-  bool isFP = isFloatingPoint(_cgc.getLLVMCtx(), var_);
-  llvm::Instruction::BinaryOps instr;
-  switch (op_) {
-    case UnaryOperator::PreAddOperator:
-    case UnaryOperator::PostAddOperator:
-      instr = isFP ? llvm::Instruction::FAdd : llvm::Instruction::Add;
-      break;
-    case UnaryOperator::PreSubOperator:
-    case UnaryOperator::PostSubOperator:
-      instr = isFP ? llvm::Instruction::FSub : llvm::Instruction::Sub;
-      break;
-    default:
-      satisfy::printErr("Unknown unary operator " + std::to_string((int)op_));
-  }
-  switch (op_) {
-    case UnaryOperator::PreAddOperator:
-    case UnaryOperator::PreSubOperator: {  // for local instant variable, 'val'
-      // in switch case.
-      llvm::Value* val = _cgc.getBuilder().CreateBinOp(
-          instr, var_.codegen(_cgc),
-          llvm::ConstantInt::get(_cgc.getLLVMCtx(),
-                                 llvm::APInt(sizeof(int) * 8, 1)));
-      return _cgc.getBuilder().CreateRet(val);
-    }
-    case UnaryOperator::PostAddOperator:
-    case UnaryOperator::PostSubOperator:
-      // post operator
-      break;
+  llvm::Value * val = var_.codegen(_cgc);
+  bool hasFP = val->getType()->isFloatingPointTy();
+
+  auto * one = hasFP ? llvm::ConstantFP::get(llvm::Type::getFloatTy(_cgc.getLLVMCtx()),
+                                             1.0f)
+               : llvm::ConstantInt::get(codegen::getBasicInt(_cgc.getLLVMCtx()),
+                                        1);
+  llvm::Value * afterSum;
+
+  if(op_ == UnaryOperator::IncOperator)
+    afterSum = hasFP
+               ? _cgc.getBuilder().CreateFAdd(val, one)
+               : _cgc.getBuilder().CreateAdd(val, one);
+  else
+    afterSum = hasFP
+               ? _cgc.getBuilder().CreateFSub(val, one)
+               : _cgc.getBuilder().CreateSub(val, one);
+
+  llvm::Type * ty = val->getType();
+  if (llvm::dyn_cast<llvm::AllocaInst>(val)) {
+    return _cgc.getBuilder().CreateStore(afterSum, val);
   }
 
-  llvm::Type* curVarTy = getTypeOf(_cgc.getLLVMCtx(), var_.varType_);
+  llvm::AllocaInst * alloca
+      = _cgc.getBuilder().CreateAlloca(ty->getPointerElementType(),
+                                       nullptr,
+                                       var_.varName_);
 
-  IdentifierAST curVar(var_.varName_);
-
-  VariableAST tmp(var_.varType_, "___tmp__v");
-  SafeExprPtr safeTmpExpr = std::shared_ptr<ExprAST>((ExprAST*)&tmp);
-
-  AssignmentAST assign(var_.varName_, safeTmpExpr);
-  SafeExprPtr equalOp = std::shared_ptr<ExprAST>((ExprAST*)&assign);
-
-  equalOp->codegen(_cgc);
-
-  _cgc.getBuilder().CreateBinOp(
-      instr, curVar.codegen(_cgc),
-      isFP ? (llvm::Value*)llvm::ConstantInt::get(
-                 _cgc.getLLVMCtx(), llvm::APInt(sizeof(int) * 8, 1))
-           : (llvm::Value*)llvm::ConstantFP::get(_cgc.getLLVMCtx(),
-                                                 llvm::APFloat(1.0F)));
-  return tmp.codegen(_cgc);
+  return _cgc.getLocal()[var_.varName_] = alloca;
 }
 
 BinaryOperatorAST::BinaryOperatorAST(std::string op, SafeExprPtr lhs,
                                      SafeExprPtr rhs)
     : lhs_(lhs), rhs_(rhs) {
+
   if(op == "+")
     op_ = BinaryOperator::Add;
   else if(op == "-")
@@ -344,6 +333,18 @@ BinaryOperatorAST::BinaryOperatorAST(std::string op, SafeExprPtr lhs,
     op_ = BinaryOperator::Div;
   else if(op == "=")
     op_ = BinaryOperator::Set;
+  else if(op == "==")
+    op_ = BinaryOperator::EQ;
+  else if(op == "/=")
+    op_ = BinaryOperator::NE;
+  else if(op == ">")
+    op_ = BinaryOperator::GT;
+  else if(op == ">=")
+    op_ = BinaryOperator::GE;
+  else if(op == "<")
+    op_ = BinaryOperator::LT;
+  else if(op == "<=")
+    op_ = BinaryOperator::LE;
   else
     printErr((std::string)"Unknown operator \'" + op + "\'");
 }
@@ -361,17 +362,26 @@ llvm::Value* BinaryOperatorAST::codegen(CodeGenContext& _cgc) noexcept {
   llvm::Value * lv;
   auto * rv = rhs_->codegen(_cgc);
 
-  auto * v = reinterpret_cast<VariableAST *>(lhs_.get());
-  if(!v->varName_.empty()
-     && v->varType_.idName_.empty()) // is new variable
-    v->setType(rv->getType());
-  ;
+  // auto * v = reinterpret_cast<VariableAST *>(lhs_.get());
+  // if (!v->varName_.empty() && v->varType_.idName_.empty()) { // is new variable
+  //   v->setType(rv->getType());
+  //   lv = v->codegen(_cgc);
+  // } else
+  //   lv = lhs_->codegen(_cgc);
+  
+  if(lhs_->expectedType() == ASTResultType::TypeUnspecified) {
+    std::cout << "Found untyped variable\n";
+    auto * v = reinterpret_cast<VariableAST *>(lhs_.get());
+    assert(v && "Couldn't get untyped variable object");
+    v->setType(rv->getType());    
+    lv = v->codegen(_cgc);
+  } else
+    lv = lhs_->codegen(_cgc);
 
-  lv = v->codegen(_cgc);
-
+  std::cout << "1\n";
   hasFP = lv->getType()->isFloatTy()
           || rv->getType()->isFloatTy();
-
+  std::cout << "2\n";
   llvm::Instruction::BinaryOps instr;
   switch (op_) {
     case BinaryOperator::Add:
@@ -386,38 +396,70 @@ llvm::Value* BinaryOperatorAST::codegen(CodeGenContext& _cgc) noexcept {
     case BinaryOperator::Div:
       instr = hasFP ? llvm::Instruction::FDiv : llvm::Instruction::SDiv;
       // TODO: UDIV
+      break;
     case BinaryOperator::Set:
+      {
+        llvm::Type * ty = lv->getType();
+        if(llvm::dyn_cast<llvm::AllocaInst>(lv))
+          ty = ty->getPointerElementType();
 
-      llvm::Type * ty = lv->getType();
-      if(llvm::dyn_cast<llvm::AllocaInst>(lv))
-        ty = ty->getPointerElementType();
+        llvm::AllocaInst * addr
+            = _cgc.getBuilder().CreateAlloca(ty,
+                                             nullptr,
+                                             "tmp_" + lv->getName());
 
-      llvm::AllocaInst * addr
-          = _cgc.getBuilder().CreateAlloca(ty,
-                                           nullptr,
-                                           "tmp_" + lv->getName());
+        if(llvm::dyn_cast<llvm::AllocaInst>(rv))
+          rv = _cgc.getBuilder().CreateLoad(rv);
 
-      if(llvm::dyn_cast<llvm::AllocaInst>(rv))
-        rv = _cgc.getBuilder().CreateLoad(rv);
+        _cgc.getBuilder().CreateStore(rv,
+                                      addr);
 
-      _cgc.getBuilder().CreateStore(rv,
-                                    addr);
-
-      _cgc.getLocal()[lv->getName().begin()] = addr;
+        _cgc.getLocal()[lv->getName().begin()] = addr;
       
-      return addr;
+        return addr;
+      }
+    case BinaryOperator::EQ:
+      if(hasFP)
+        return _cgc.getBuilder().CreateFCmpOEQ(lv, rv);
+      return _cgc.getBuilder().CreateICmpEQ(lv, rv);
+
+    case BinaryOperator::NE:
+      if(hasFP)
+        return _cgc.getBuilder().CreateFCmpONE(lv, rv);
+      return _cgc.getBuilder().CreateICmpNE(lv, rv);
+
+    case BinaryOperator::GT:
+      if(hasFP)
+        return _cgc.getBuilder().CreateFCmpOGT(lv, rv);
+      return _cgc.getBuilder().CreateICmpSGT(lv, rv);
+
+    case BinaryOperator::GE:
+      if(hasFP)
+        return _cgc.getBuilder().CreateFCmpOGE(lv, rv);
+      return _cgc.getBuilder().CreateICmpSGE(lv, rv);
+
+    case BinaryOperator::LT:
+      if(hasFP)
+        return _cgc.getBuilder().CreateFCmpOLT(lv, rv);
+      return _cgc.getBuilder().CreateICmpSLT(lv, rv);
+
+    case BinaryOperator::LE:
+      if(hasFP)
+        return _cgc.getBuilder().CreateFCmpOLE(lv, rv);
+      return _cgc.getBuilder().CreateICmpSLE(lv, rv);
+
   }
 
-  lv = codegen::toArithmeticValue(_cgc,
-                                  lv);
-  rv = codegen::toArithmeticValue(_cgc,
-                                  rv);
+  // lv = codegen::toArithmeticValue(_cgc,
+  //                                 lv);
+  // rv = codegen::toArithmeticValue(_cgc,
+  //                                 rv);
 
   return _cgc.getBuilder().CreateBinOp(instr, lv, rv);
 }
 
 FunctionAST::FunctionAST(const std::string& funcName,
-                         const IdentifierAST& retType,
+                         const std::string & retType,
                          const std::vector<VariableAST>& parTypes,
                          const std::optional<CodeBlockAST> & cb)
     : funcName_(funcName), retType_(retType), params_(parTypes), cb_(cb) {
@@ -431,7 +473,7 @@ llvm::Value* FunctionAST::codegen(CodeGenContext& _cgc) noexcept {
     types[i] = getTypeOf(_cgc.getLLVMCtx(), params_[i].varType_);
 
   llvm::FunctionType* funcTy = llvm::FunctionType::get(
-      getTypeOf(_cgc.getLLVMCtx(), retType_.idName_), types, false);
+      getTypeOf(_cgc.getLLVMCtx(), retType_), types, false);
   llvm::Function* func = llvm::Function::Create(
       funcTy, llvm::GlobalValue::ExternalLinkage, funcName_, _cgc.getModule());
 
@@ -492,6 +534,23 @@ llvm::Value* ReturnAST::codegen(CodeGenContext& _cgc) noexcept {
   return _cgc.getBuilder().CreateRet(val);
 }
 
+CallAST::CallAST(std::string funcName, std::vector<VariableAST> args)
+    : func_(funcName), args_(args) {
+  ;
+}
+
+llvm::Value *
+CallAST::codegen(CodeGenContext & _cgc) noexcept {
+  // TODO: Name Mangling
+  llvm::Function * func = _cgc.getModule().getFunction(func_);
+  std::vector<llvm::Value *> argsList;
+  
+  for(auto & i : args_)
+    argsList.push_back(i.codegen(_cgc));
+
+  return _cgc.getBuilder().CreateCall(func, argsList);
+}
+
 IfAST::IfAST(SafeExprPtr _if, CodeBlockAST _then) : if_(_if), then_(_then) {}
 
 void IfAST::pushElse(CodeBlockAST & _cb) noexcept {
@@ -502,9 +561,10 @@ llvm::Value * IfAST::codegen(CodeGenContext & _cgc) noexcept {
   auto * cond = if_->codegen(_cgc);
   
   auto * condV =
-      _cgc.getBuilder().CreateICmpNE(cond, llvm::ConstantInt::get(_cgc.getLLVMCtx(),
-                                                                  llvm::APInt(sizeof(int) * 8,
-                                                                              0)));
+      _cgc.getBuilder().CreateICmpNE(cond,
+                                     llvm::ConstantInt::get(
+                                         llvm::IntegerType::getInt32Ty(_cgc.getLLVMCtx()),
+                                         0));
   llvm::BasicBlock * bThen, * bElse, * bMerge;
 
   bThen = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
@@ -556,6 +616,96 @@ llvm::Value * IfAST::codegen(CodeGenContext & _cgc) noexcept {
   _cgc.currentBlock()->getParent()->getBasicBlockList().push_back(bMerge);
   _cgc.getBuilder().SetInsertPoint(bMerge);
   // won't push
+
+  return bMerge;
+}
+
+ForAST::ForAST(SafeExprPtr comp, SafeExprPtr forBlock)
+    : comp_{ comp, forBlock} {
+  if(comp->expectedType() == ASTResultType::Number)
+    forE_ = ForE::ByNumber;
+  forE_ = ForE::ByBoolVar;
+}
+
+ForAST::ForAST(SafeExprPtr comp1, SafeExprPtr comp2, SafeExprPtr comp3, SafeExprPtr forBlock)
+    : comp_{ comp1, comp2, comp3, forBlock }, forE_(ForE::ByExplicit) {
+  ;
+}
+
+llvm::Value *
+ForAST::codegen(CodeGenContext & _cgc) noexcept {
+  std::cout << static_cast<int>(forE_) << std::endl;
+  switch(forE_) {
+    case ForE::ByNumber:
+      comp_[1] = SafeExprPtr((ExprAST *)new BinaryOperatorAST(
+          BinaryOperator::LT,
+          SafeExprPtr((ExprAST *)new VariableAST("u32", "for_loop_iterator")),
+          comp_[0]));
+      comp_[0] = SafeExprPtr((ExprAST *)new AssignmentAST("for_loop_iterator", comp_[0]));
+      comp_[2] = SafeExprPtr((ExprAST *)new UnaryOperatorAST(
+          UnaryOperator::IncOperator, VariableAST("for_loop_iterator")));
+      break;
+      
+    case ForE::ByBoolVar:
+
+      comp_[1] = SafeExprPtr((ExprAST *)new BinaryOperatorAST(
+          BinaryOperator::NE,
+          comp_[0],
+          SafeExprPtr((ExprAST *)new NumberAST("bool", 0))));
+      comp_[0] = comp_[2] = nullptr;
+
+    case ForE::ByExplicit:
+      ;
+    default:
+        printErr((std::string)"Unknown forE \'"
+                 + std::to_string(static_cast<int>(forE_))
+                 + "\'");
+    return nullptr;
+  }
+
+  llvm::BasicBlock * forBlock
+      = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
+                                 "forBlock",
+                                 _cgc.currentBlock()->getParent()),
+      * forCond  = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
+                                          "forcond"),
+      * forUpd = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
+                                          "forupd"),
+      * forBody = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
+                                           "forbody"),
+      * bMerge = llvm::BasicBlock::Create(_cgc.getLLVMCtx(),
+                                          "forcont");
+
+  _cgc.pushBlock(forBlock);
+
+  if(comp_[0].get())
+    comp_[0]->codegen(_cgc);
+
+  _cgc.currentBlock()->getParent()->getBasicBlockList().push_back(forCond);
+  _cgc.getBuilder().SetInsertPoint(forCond);
+  _cgc.getBuilder().CreateCondBr(comp_[1]->codegen(_cgc),
+                                 forBody, bMerge);
+  forCond = _cgc.getBuilder().GetInsertBlock();
+
+  _cgc.currentBlock()->getParent()->getBasicBlockList().push_back(forBody);
+  _cgc.getBuilder().SetInsertPoint(forBody);
+  comp_[3]->codegen(_cgc);
+  forBody = _cgc.getBuilder().GetInsertBlock();
+
+  _cgc.getBuilder().CreateBr(forUpd);
+
+  _cgc.currentBlock()->getParent()->getBasicBlockList().push_back(forUpd);
+  _cgc.getBuilder().SetInsertPoint(forUpd);
+  
+  if(comp_[2].get())
+    comp_[2]->codegen(_cgc);
+  _cgc.getBuilder().CreateBr(forCond);
+  forUpd = _cgc.getBuilder().GetInsertBlock();
+
+  _cgc.popBlock();
+
+  _cgc.currentBlock()->getParent()->getBasicBlockList().push_back(bMerge);
+  _cgc.getBuilder().SetInsertPoint(bMerge);
 
   return bMerge;
 }

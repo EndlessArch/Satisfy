@@ -19,7 +19,10 @@ VarType:VarName = InitialValue
 ```
 returnType::funcName par0Type: par0 par1Type: par1 ... {
 
-    funcName/someVal0 someval1 ...
+    # In the case of varargs function,
+    # seperator is required at the end too.
+    funcName/someVal0 someval1 .../
+    voidFunc//
     
     if true {
         ...
@@ -34,8 +37,9 @@ returnType::funcName par0Type: par0 par1Type: par1 ... {
     for (expr) {
         ...
     }
-    
-    for/i32: i = 0/i < 10/++i {
+
+    # You can explicitly set condition for for-loop.
+    for i32: i = 0/i < 10/++i {
         ...
     }
 
@@ -44,13 +48,16 @@ returnType::funcName par0Type: par0 par1Type: par1 ... {
 ```
 
 ### 외부 함수
+
 ```
+# global function
 !gl
 returnType::funcName par0Type: par0 par1Type: par1 .../
 ```
 
 ### 클래스
 ```
+# Don't you want something special?
 cls ClassName ->
     mType0: MemberValue0/ MemberValue1
     const mTypeN: MemberValueN
@@ -65,7 +72,8 @@ cls ClassName ->
 
     MethodType::method par0: par0Type par1: par1Type ...
     
-    !static
+    # static method
+    !st
     MethodType::staticMethod ...
     <-
 ```
