@@ -1,36 +1,36 @@
 #ifndef SATISFY_TOKENPARSER_HPP
 #define SATISFY_TOKENPARSER_HPP
 
-#include <vector>
+#include <string>
 
-#include "AST.hpp"
 #include "Token.hpp"
 
-using namespace satisfy::ast;
-
-using satisfy::token::TokenType;
-
 namespace satisfy {
-namespace tokParser {
 
-namespace details {
-bool isIdentifier(TokenType) noexcept;
-}
+class GlobalTokenParser {
+  
+  std::string last_token_string_;
+  TokenType last_token_type_;
 
-SafeExprPtr parseStatement(void) noexcept;
-SafeExprPtr parseExpression(void) noexcept;
+  int getNextChar(void) noexcept;
 
-std::vector<VariableAST> parseList(void) noexcept;
+  inline
+  bool isWhitespace(int p) noexcept {
+    return isspace(p);
+  }
 
-void parseContents(CodeBlockAST &) noexcept;
+  inline
+  bool isAlphabetic(int p) noexcept {
+    return std::isalpha(p);
+  }
 
-void parseBlock(CodeBlockAST &) noexcept;
+ public:
 
-void parseRootExpression(CodeAST &) noexcept;
+  ;
 
-void parseLoop(CodeAST &) noexcept;
+  TokenType parseToken(void) noexcept;
+};
 
-} // ns tokParser
 } // ns satisfy
 
 #endif // SATISFY_TOKENPARSER_HPP
