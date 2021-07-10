@@ -60,8 +60,8 @@ returnType::funcName par0Type: par0 par1Type: par1 .../
 # Do you want something special?
 cls ClassName::ParentClass ->
     mType0: MemberValue0/ MemberValue1
-    # const
-    cst mTypeN: MemberValueN
+    # const static
+    !cst !st mTypeN: MemberValueN
     
     const ... {
         MemberValueN = ...

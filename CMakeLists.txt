@@ -27,6 +27,7 @@ file(GLOB SOURCE_FILES
   )
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR})
 target_include_directories(${PROJECT_NAME} PUBLIC ${LLVM_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LLVM_LIBRARIES})
 target_link_directories(${PROJECT_NAME} PUBLIC ${LLVM_LIBRARY_DIRS})
